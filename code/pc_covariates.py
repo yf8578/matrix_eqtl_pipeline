@@ -27,6 +27,9 @@ def pca(genotypes, vcf_file, output_file, number_pcs):
     if not output_file:
         of = sys.stdout
     else:
+        out_dir = os.path.dirname(output_file)
+        if out_dir and not os.path.exists(out_dir):
+            os.makedirs(out_dir)
         of = open(output_file, 'w')
 
     ipca = IncrementalPCA()

@@ -29,14 +29,23 @@ def iqn(input_filename, output_filename=None):
     utils = importr('utils', robject_translations={'with': '_with'})
     write_table = utils.write_table
 
-    r.source("code/MatrixEQTL.R")
-    r.source("code/general_iqn_py.R")
+    
+    # Determine directory where this script resides
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+
+    # Source R scripts relative to this directory
+    r.source(os.path.join(script_dir, "general_iqn_py.R"))
 
     if output_filename is None:
         output_filename = ""
 
-    normed = r['inverse_quantile_norm'](input_filename)
+    if output_filename:
+        out_dir = os.path.dirname(output_filename)
+        if out_dir and not os.path.exists(out_dir):
+            os.makedirs(out_dir)
 
+    normed = r['inverse_quantile_norm'](input_filename)
+    
     write_table(normed, output_filename, col_names=True, row_names=False, quote=False, sep="\t")
 
 

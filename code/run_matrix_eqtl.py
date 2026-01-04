@@ -41,8 +41,11 @@ def main():
 
     r = ro.r
 
-    r.source("code/mxeqtl.R")
-    r.source("code/MatrixEQTL.R")
+    # Determine directory where this script resides
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+
+    # Source R scripts relative to this directory
+    r.source(os.path.join(script_dir, "mxeqtl.R"))
 
     r.mxeqtl(args.genotype_matrix, args.genotype_positions, args.gene_expression_matrix, args.gene_positions,
              covariates=args.covariates, cis_output_file=args.output_file, cis_pval=args.p_value, trans_output_file=args.trans_output_file,

@@ -12,6 +12,7 @@ def get_args():
     parser.add_argument('-o', '--out-dir', required=True, help='Output directory')
     parser.add_argument('--maf', type=float, default=0.05, help='MAF threshold (default: 0.05)')
     parser.add_argument('--plink-cmd', default='plink', help='Command to invoke PLINK (default: plink)')
+    parser.add_argument('--snps-only', action='store_true', help='Only analyze SNPs (exclude indels)')
     
     args = parser.parse_args()
     return args
@@ -71,6 +72,9 @@ def main():
         "--double-id",
         "--out", plink_prefix
     ]
+
+    if args.snps_only:
+        cmd.append("--snps-only")
     
     print("  Command: " + " ".join(cmd))
     try:
@@ -125,22 +129,25 @@ def main():
             if c == 'id':
                 new_cols.append(c)
             else:
-                # If format is FID_IID and FID=IID, it looks like SAMPLE_SAMPLE
-                if f"{c}_{c}" in current_cols: 
-                    # This logic is tricky. Let's just strip the prefix if it matches
-                    # format: ID_ID
-                    if '_' in c:
-                        parts = c.split('_')
-                        if len(parts) == 2 and parts[0] == parts[1]:
-                             new_cols.append(parts[0])
-                        else:
-                             new_cols.append(c)
+                # PLINK with --double-id creates IDs like SampleID_SampleID
+                # We want just SampleID.
+                # Check if format is X_X where X==X
+                if '_' in c:
+                    parts = c.split('_')
+                    # If it looks like ID_ID, take just ID
+                    if len(parts) == 2 and parts[0] == parts[1]:
+                        new_cols.append(parts[0])
                     else:
+                        # Otherwise keep as is (maybe the ID itself has underscore)
                         new_cols.append(c)
+                else:
+                    new_cols.append(c)
         matrix_df.columns = new_cols
         
         # Save
-        matrix_df.to_csv(final_matrix, sep='\t', index=False)
+        # Use na_rep='NA' so MatrixEQTL recognizes missing values
+        # Use float_format='%.0f' to convert 0.0 -> 0 which looks cleaner and is what user expects
+        matrix_df.to_csv(final_matrix, sep='\t', index=False, na_rep='NA', float_format='%.0f')
         
         print(f"  Genotype Matrix: {final_matrix}")
         print(f"  SNP Positions:   {final_pos}")

@@ -28,9 +28,17 @@ def main():
     utils = importr('utils', robject_translations={'with': '_with'})
     write_table = utils.write_table
 
-    r.source("code/peer_function.R")
+    # Determine directory where this script resides
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+
+    r.source(os.path.join(script_dir, "peer_function.R"))
 
     input_filename, num_factors, output_filename = get_args()
+    
+    if output_filename:
+        out_dir = os.path.dirname(output_filename)
+        if out_dir and not os.path.exists(out_dir):
+            os.makedirs(out_dir)
 
     factors = r['peer_function'](input_filename, num_factors)
 
