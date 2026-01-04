@@ -27,6 +27,7 @@ def get_args():
     parser.add_argument('--no-rownames', action='store_false', help='')
     parser.add_argument('--missing', default='NA', help='')
     parser.add_argument('--sep', default='\t', help='')
+    parser.add_argument('--chunk-size', type=int, default=2000, help='')
 
     args = parser.parse_args()
 
@@ -46,7 +47,7 @@ def main():
     r.mxeqtl(args.genotype_matrix, args.genotype_positions, args.gene_expression_matrix, args.gene_positions,
              covariates=args.covariates, cis_output_file=args.output_file, cis_pval=args.p_value, trans_output_file=args.trans_output_file,
              trans_pval=args.trans_p_value, cis_dist=args.cis_distance, MAF=args.maf, qq=args.qq_plot, model=args.model,
-             header=args.no_header, rownames=args.no_rownames, missing=args.missing, sep=args.sep)
+             header=args.no_header, rownames=args.no_rownames, missing=args.missing, sep=args.sep, chunk_size=args.chunk_size)
 
 if __name__ == '__main__':
     main()
