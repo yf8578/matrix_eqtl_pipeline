@@ -1,3 +1,5 @@
+library(MatrixEQTL)
+
 toSkip <- function(exists) {
     if (exists) {
         return(1)
@@ -77,11 +79,12 @@ mafFilter <- function(snps, MAF) {
 }
 
 setModel <- function(model) {
-    if (model == "linear") {
+    model_lower <- tolower(model)
+    if (model_lower == "linear") {
         return(modelLINEAR)
-    } else if (model == "anova") {
+    } else if (model_lower == "anova") {
         return(modelANOVA)
-    } else if (model == "linear_cross") {
+    } else if (model_lower == "linear_cross") {
         return(modelLINEAR_CROSS)
     } else {
         stop("Model must be linear, anova or linear_cross")

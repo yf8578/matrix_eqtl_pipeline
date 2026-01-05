@@ -1,199 +1,179 @@
-* `matrix_eqtl_wrapper.py`
-	- The main entrypoint for the pipeline.
-	- Takes four arguments
-		- `-v/--vcf-file` : name of VCF file to use in eQTL analysis
-		- `-g/--gene-expression-file` : name of gene expression matrix to use in eQTL analysis
-		- `-p/--gene-position-file` : name of file that contains the positions of the genes
-		- `-n/--numfactors` : number of PEER factor to correct for
-	- Has 28 optional arguments  
-		- `--headless-vcf-filename` : Custom name of output file if the `.noh` extension isn't desired
-   		- `--overlap-extension` : Custom file extension to be used if `.out` isn't desired
-		- `--maf-cutoff` : MAF cutoff to use. Default is 0.05
-		- `--filtered-filename`: Custom name of output file if `.maf_filtered` isn't desired
-		- `--parsed-filename` : Custom name of output file if `.matrix` isn't desired
-		- `--position-filename` : Custom filename for the genotype positions
-		- `--meqtl-position-filename` : Custom filename for the MatrixEQTL formatted positions
-		- `--number-pcs` : Number of PCs to include; default=1 
-		- `--pc-filename` : Custom filename for the PC covariates, default is `filename.pcs`
-		- `--normalized-filename` : Custom filename for the inverse quantile normalized expression matrix, default is `filename.qnorm`
-		- `--peer-factor-filename` : Custom filename for the PEER factors, default is `filename.peer_factors_n` where `n` is the number of factors
-		- `--combined-covariate-filename` : Custom filename for the combined covariates, default is `combined_covariates`
-		- `--additional-covariates` : Filename for any additional covariates to include in the combined covariates file
-		- `--trans-output-file` : Filename of the output file for trans association, default is no trans- output filename
-		- `--trans-p-value` : P-value cutoff for trans associations, default is 0
-		- `--model`: Model type to use. Default is `linear`
-		- `--cis-distance` : Maximum distance between genotype and gene 
-		- `--cis-p-value` : P-value cutoff, default is 0.05
-		- `--no-header` : Binary flag to use if matrices don't have a header with IDs
-		- `--no-rownames` :  Binary flag to use if matrices don't have rowname IDs
-		- `--missing` : The value of missing data, default is `NA`
-		- `--sep` : The separating character of the genotype and gene expression matrices, default is "\t"
-		- `--maf` : MAF cutoff for filtering by MatrixEQTL; Default is 0 and no MAF filtering 
-		- `--qqplot` : Filename of the qq-plot, default is no qq-plot file (?)
-		- `--eqtl-output-file` : Filename of the output file, default is `MatrixEQTLOutput`
-		- `--boxplot-pdf-file` : Filename for PDF of boxplots, default is no boxplots
-		- `--correlation-output-file` : Filename for the correlations of the eQTLs. Default is `MatrixEQTLOutput.corr`
-		- `--manhattan-pdf-file` : Filename for the PDF of the manhattan plot, default is no manhattan plot
+# MatrixEQTL Analysis Pipeline
 
-* `remove_vcf_header.py`
-	- Removes `##` header lines from VCF files; Keeps `#` header
-	- Takes one argument  
-		- `-v/--vcf-file` : name of VCF file to remove header from  
-	- Has two optional arguments  
-		- `-o/--output-file` : Custom name of output file if the `.noh` extension isn't desired  
-		- `-s/--stdout` : Prints output to stdout ie console/terminal, can be redirected or piped  
+> [中文文档 (Chinese Version)](README_CN.md)
 
-* `vcf_overlap.py`
-	- Overlaps the samples from the VCF file and the gene expression file
-	- MatrixEQTL requires the VCF file and gene expression file to have the same samples and in the same order
-	- Takes two arguments  
-		- `-v/--vcf-file` : A VCF file with the header information removed (output of `remove_vcf_header.py`)  
-		- `-g/--gene-expression-file` : A gene expression matrix; Each column is a sample, each row is a gene  
-	- Takes one optional argument  
-		- `-e/--extension` : Custom file extension to be used if `.out` isn't desired  
-	- vcf_overlap.py doesn't have a stdout option as it outputs two files
+This pipeline integrates **PLINK** (`process_vcf_plink.py`) and **MatrixEQTL** (`run_matrix_eqtl.py`) to provide a robust, high-performance solution for eQTL analysis, scaling from VCF processing to final association testing.
 
-* `filter_snps.py`
-	- Minor allele frequency filtering
-	- Takes one argument  
-		- `-v/--vcf-file` : A VCF file with the header information removed; N.B. To get accurate MAF filtering for your sample, use this step after overlapping  
-	- Takes two optional argument  
-		- `-o/--output-file` : Custom name of output file if `.maf_filtered` isn't desired  
-		- `-s/--stdout` : Prints output to stdout, so it can be redirected or piped  
+## 🌟 Key Features
 
-* `parse.py`
-	- Parses a ## headerless VCF file to get summed genotypes; ex `0|0:` becomes `0`, `0|1:` becomes `1`, `1|1:` becomes `2` 
-	- Takes one argument  
-		- `-v/--vcf-file` : A VCF file with the header information removed  
-	- Takes two optional arguments  
-		- `-o/--output-file` : Custom name of output file if `.matrix` isn't desired  
-		- `-s/--stdout` : Prints output to stdout  
+* **High Performance**: Uses PLINK for VCF filtering and conversion, significantly faster than Python-based parsing.
+* **Memory Optimized**: Supports chunked processing for large datasets.
+* **Comprehensive Covariates**: Automatically generates Genotype PCA (for population structure) and PEER factors (for hidden confounders).
+* **Dual Modes**: Supports **Mode A** (Cis/Trans analysis with location data) and **Mode B** (Location-agnostic / Global scan).
+* **Automated QC**: Includes tools for normality checks (`check_normality.py`) and covariate correlation checks (`check_covariates.py`).
 
-* `position.py`
-	- Creates two position files, one in the form required for MatrixEQTL, and one that contains `id`, `chr`, `start`, `stop`, and `type`
-	- Takes one argument  
-		- `-v/--vcf-file` : A VCF file with the header information removed  
-	- Takes two optional arguments  
-		- `-o/--output-file` : Custom filename for the genotype positions  
-		- `-m/--meqtl-file` : Custom filename for the MatrixEQTL formatted positions  
+---
 
-* `pc_covariates.py`
-	- Calculates Principle Components using Scikit-Learn's IncrementalPCA method
-	- Takes one argument  
-		- `-v/--vcf-file` : A VCF file that has been parsed with `parse.py`  
-	- Takes three optional arguments  
-		- `-o/--output-file` : Custom filename for the PC covariates, default is `filename.pcs`  
-		- `-n/--number-pcs` : Number of PCs to include; default=1  
-		- `-s/--stdout` : Prints output to stdout  
+## 🚀 Quick Start
+
+### 0. Prerequisites
+
+Ensure the following are installed and in your PATH:
+
+* **PLINK** (v1.9 or v2.0)
+* **Python 3** (with `pandas`, `sklearn`, `rpy2`)
+* **R** (with `MatrixEQTL`, `peer` packages)
+
+### 1. Set Up Variables
+
+Copy and paste this block into your terminal (modify paths for your data):
+
+```bash
+# === 1. Set Paths (MODIFY THESE) ===
+export WORK_DIR=$(pwd)
+export CODE_DIR=${WORK_DIR}/matrix_eqtl_pipeline/code
+
+# Input Files
+export VCF_FILE="/path/to/your/genotypes.vcf.gz"
+export EXP_FILE="/path/to/your/expression_matrix.tsv"
+# Gene Locations (Required for Mode A)
+export GENE_LOC_FILE="/path/to/your/gene_locations.tsv"
+
+# Create Output Directory
+mkdir -p ${WORK_DIR}/output
+```
+
+### 2. Step 1: VCF Processing (via PLINK)
+
+Cleans VCF, filters for sample overlap, retains only SNPs, and generates formats for PCA and MatrixEQTL.
+
+```bash
+echo ">>> Step 1: Processing VCF..."
+python3 ${CODE_DIR}/process_vcf_plink.py \
+    --vcf ${VCF_FILE} \
+    --expression ${EXP_FILE} \
+    --out-dir ${WORK_DIR}/output/step1_plink \
+    --maf 0.05 \
+    --plink-cmd plink \
+    --snps-only \
+    --threads 4
+```
+
+### 3. Step 2: Generate Covariates (PCA + PEER)
+
+```bash
+echo ">>> Step 2: Generating Covariates..."
+
+# 2.1 Expression Normalization (IQN)
+python3 ${CODE_DIR}/run_iqn.py \
+    -i ${EXP_FILE} \
+    -o ${WORK_DIR}/output/step2_covariates/expression.qnorm
+
+# 2.2 Genotype PCA (Calculate top 3 PCs using PLINK)
+plink \
+    --bfile ${WORK_DIR}/output/step1_plink/plink_temp \
+    --pca 3 \
+    --threads 4 \
+    --out ${WORK_DIR}/output/step2_covariates/plink_pca
+
+# Format PCA output for MatrixEQTL
+python3 ${CODE_DIR}/format_plink_pca.py \
+    -i ${WORK_DIR}/output/step2_covariates/plink_pca.eigenvec \
+    -o ${WORK_DIR}/output/step2_covariates/genotype.pcs \
+    -n 3
+
+# 2.3 PEER Factor Estimation (e.g., 15 factors)
+# Optional: Add -c known_covariates.txt to include known factors (Sex, Age)
+python3 ${CODE_DIR}/run_peer.py \
+    -i ${WORK_DIR}/output/step2_covariates/expression.qnorm \
+    -n 15 \
+    -o ${WORK_DIR}/output/step2_covariates/peer_factors.tsv
+
+# 2.4 Combine All Covariates
+python3 ${CODE_DIR}/combine_covariates.py \
+    -p ${WORK_DIR}/output/step2_covariates/genotype.pcs \
+    -f ${WORK_DIR}/output/step2_covariates/peer_factors.tsv \
+    -o ${WORK_DIR}/output/step2_covariates/final_covariates.txt
+```
+
+### 4. Step 3: Run Analysis
+
+#### Option A: Standard eQTL (Cis/Trans)
+
+Use this if you have gene/SNP positions and want to distinguish **Cis** (local) vs **Trans** (distant) effects.
+
+```bash
+echo ">>> Step 3: Running Mode A (Cis/Trans)..."
+
+# (Optional) Fix gene header: MatrixEQTL requires 'geneid'
+# sed '1s/features/geneid/' ${GENE_LOC_FILE} > ${WORK_DIR}/output/step1_plink/gene_positions.txt
+
+python3 ${CODE_DIR}/run_matrix_eqtl.py \
+    --genotype-matrix ${WORK_DIR}/output/step1_plink/genotype.matrix \
+    --genotype-positions ${WORK_DIR}/output/step1_plink/snp_positions.txt \
+    --gene-expression-matrix ${WORK_DIR}/output/step2_covariates/expression.qnorm \
+    --gene-positions ${WORK_DIR}/output/step1_plink/gene_positions.txt \
+    --covariates ${WORK_DIR}/output/step2_covariates/final_covariates.txt \
+    --output-file ${WORK_DIR}/output/final_cis/cis_results.txt \
+    --trans-output-file ${WORK_DIR}/output/final_cis/trans_results.txt \
+    --p-value 0.05 \
+    --trans-p-value 1e-5 \
+    --cis-distance 1000000 \
+    --chunk-size 2000
+```
+
+#### Option B: Location-Agnostic / Global Scan
+
+Use this for mQTL or if physical distance is not relevant.
+
+```bash
+echo ">>> Step 4: Running Mode B (Location-Agnostic)..."
+python3 ${CODE_DIR}/run_matrix_eqtl_noloc.py \
+    --genotype-matrix ${WORK_DIR}/output/step1_plink/genotype.matrix \
+    --expression-matrix ${WORK_DIR}/output/step2_covariates/expression.qnorm \
+    --covariates ${WORK_DIR}/output/step2_covariates/final_covariates.txt \
+    --output-file ${WORK_DIR}/output/final_noloc/global_results.txt \
+    --p-value 1e-5 \
+    --no-fdr \
+    --chunk-size 5000
+```
+
+---
+
+## 📜 Detailed Script Reference
+
+### Core Scripts
+
+* `process_vcf_plink.py` (Step 1)
+  * **Purpose**: All-in-one VCF processing using PLINK.
+  * **Features**: Handles overlapping, SNP filtering, multithreading (`--threads`).
+
+* `run_matrix_eqtl.py` (Step 3 - Mode A)
+  * **Purpose**: Wrapper for MatrixEQTL with location information (Cis/Trans).
+  * **Key Args**: `--cis-distance` (default 1Mb), `--p-value` (cis threshold), `--trans-p-value`.
+
+* `run_matrix_eqtl_noloc.py` (Step 3 - Mode B)
+  * **Purpose**: Location-agnostic MatrixEQTL (ANOVA model or global scan).
+  * **Features**: Optimized for speed and large datasets.
+
+### Helper Utilities
 
 * `run_iqn.py`
-	- Python wrapper for `general_iqn_py.R`
-	- Performs inverse quantile normalization on a gene expression matrix
-	- Inverse quantile normalization casts each row (gene expression values from one gene for each sample) onto the standard normal distribution by rank
-	- Takes one argument  
-		- `-i/--input-file` : A gene expression matrix file; N.B. for the Inverse Quantile Normalization to get the correct results for an eQTL analysis use this step after overlapping  
-	- Takes two optional arguments  
-		- `-o/--output-file` : Custom filename for the inverse quantile normalized expression matrix, default is `filename.qnorm`  
-		- `-s/--stdout` : Prints output to stdout  
+  * **Purpose**: Inverse Quantile Normalization of expression data.
+  * **Update**: Automatically plots a normality check (`.check.png`).
 
 * `run_peer.py`
-	- Python wrapper for `peer_function.R`
-	- Runs PEER on gene expression matrix to calculate PEER factors which can be used as covariates
-	- Takes two arguments  
-		- `-i/--input-file` : The gene expression matrix filename; N.B. run on the inverse quantile normalized gene expression matrix  
-		- `-n/--number-factors` : The number of PEER factors to calculate  
-	- Takes one optional argument  
-		- `-o/--output-file` : Custom filename for the PEER factors, default is `filename.peer_factors_n` where `n` is the number of factors  
+  * **Purpose**: Calculates PEER hidden factors.
+  * **Update**: Supports `-c/--covariates` to include known covariates (e.g. Sex) in the model.
+
+* `format_plink_pca.py`
+  * **Purpose**: Converts PLINK `.eigenvec` to MatrixEQTL format.
+
+* `check_covariates.py` (New QA Tool)
+  * **Purpose**: Checks correlations between **Known Covariates** and **PEER Factors** / **Expression PCs**.
+  * **Usage**: Run this to validate if your covariates are relevant or redundant.
 
 * `combine_covariates.py`
-	- Combines genotype PC covariates, gene expression PEER factors and any additional PCs like population and gender
-	- Takes two arguments  
-		- `-p/--snp-pc-file` :  
-		- `-f/--peer-factor-file` :  
-	- Takes three optional arguments  
-		- `-o/--output-file` : Custom filename for the combined covariates, default is `combined_covariates`  
-		- `-a/--additional-covariates` : Filename for any additional covariates to include in the combined covariates file  
-		- `-s/--stdout` : Prints output to stdout  
+  * Combines genotype PCs, PEER factors, and additional covariates into one file.
 
-* `run_matrix_eqtl.py`
-	- Wrapper for running MatrixEQTL 
-	- Takes four arguments  
-		- `-m/--genotype-matrix` : Genotype matrix of summed genotypes
-		- `-p/--genotype-positions` : Genotype positions in MatrixEQTL format
-		- `-e/--gene-expression-matrix` : Gene expression matrix
-		- `-g/--gene-positions` : Gene positions in MatrixEQTL format 
-	
-	- Takes 13 optional arguments  
-		- `-c/--covariates` : Covariate filename, no default  
-		- `-o/--output-file` : Custom filename for the MatrixEQTL output, default is `MatrixEqtlOutput`  
-		- `-v/--p-value` : P-value cutoff, default is 0.05  
-		- `-q/--qq-plot` : Custom filename for the qq-plot PDF file, default is `MatrixEqtlQQPlot.pdf` 
-		- `--trans-output-file` : Filename of the output file for trans association, default is no trans- output filename  
-		- `--trans-p-value` : P-value cutoff for trans associations, default is 0  
-		- `--model` : Model type to use. Default is `linear`  
-		- `--cis-distance` : Maximum distance between genotype and gene  
-		- `--maf` : MAF cutoff for filtering by MatrixEQTL; Default is 0 and no MAF filtering  
-		- `--no-header` : Binary flag to use if matrices don't have a header with IDs  
-		- `--no-rownames`: Binary flag to use if matrices don't have rowname IDs  
-		- `--missing` : The value of missing data, default is `NA`  
-		- `--sep` : The separating character of the genotype and gene expression matrices, default is "\t"  
-
-* `CorrBoxPlot.py`
-	- Code to produce a boxplot for each eQTL
-	- Takes three arguments
-		- `-m/--matrix-eqtl-results` : Filename of the eQTL results
-		- `-g/--genotype-file` : File the genotype matrix used to produce the eQTLs
-		- `-e/--gene-expression-file` : Filename of the gene expression matrix to produce the eQTLs
-	- Takes three optional arguments
-		- `-s/--stdout` : Option to print the eQTL results with the correlation to stdout
-		- `-o/--output-file` : Name of file for eQTL results with correlation. Default is `.corr`
-		- `-p/--pdf-file` : Name of PDF file for the boxplots. If not provided boxplots aren't produced.
-
-* `manhattan.py`
-	- Code to create a Manhattan plot from the eQTL results
-	- Takes three arguments
-		- `-e/--eqtl-output-file` : Filename of the eQTL results
-		- `-l/--position-file` : Filename for the genotype positions
-		- `-p/--pdf-file` : Filename for the PDF output of the Manhattan plot
-
-* `modify_matrix_eqtl.py`
-	- Script to create a version of MatrixEQTL Engine that behaves better with Python and rpy2
-	- Takes two optional arguments  
-		- `-o/--output-file`  
-		- `-s/--stdout`  
-
----------------------------------------------------
-
-* `general_iqn_py.R`
-	- Inverse quantile normalization function
-	- Takes one argument : Filename of the gene expression matrix to normalize
-	- Returns the inverse quantile normalized genen expression matrix
-
-* `peer_function.R`
-	- R function to run PEER
-	- Takes two arguments :   
-		- Filename of gene expression matrix  
-		- Number of PEER factors to calculate  
-	- Returns the PEER factor matrix 
-
-* `mxeqtl.R`
-	- R functions to run MatrixEQTL
-	- The main function (mxeqtl) takes six  arguments  
-		- `snp_file` : Filename of genotype matrix  
-		- `snp_location` : Filename of the genotype positions  
-		- `expr_file` : Filename of the gene expression matrix  
-		- `expr_location` : Filename of the gene positions  
-		- `cis_output_file` : Filename of the output file  
-		- `cis_pval` : P-value cutoff  
-	- Takes 11 optional arguments  
-		- `covariates` : Filename of the covariates, default is no covariate file
-		- `trans_pval` :  P-value cutoff for trans associations, default is 0  
-		- `trans_output_file` : Filename of the output file for trans association, default is no trans- output filename  
-		- `model` : Model type to use. Default is `linear`  
-		- `MAF` : MAF cutoff for filtering; Default is 0 and no MAF filtering  
-		- `cis_dist` : Maximum distance between genotype and gene  
-		- `qq` : Filename of the qq-plot, default is no qq-plot file
-		- `missing` : The value of missing data, default is `NA`
-		- `sep` : The separating character of the genotype and gene expression matrices, default is "\t"
-		- `header` : Binary flag if matrices have a header with IDs, default is `TRUE`
-		- `rownames` : Binary flag if matrices have rowname IDs, default is `TRUE`
+*(Legacy scripts like `pc_covariates.py` are preserved but PLINK PCA is recommended)*
