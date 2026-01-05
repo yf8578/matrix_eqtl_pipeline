@@ -7,76 +7,7 @@ toSkip <- function(exists) {
         return(0)
     }
 }
-
-getGenotypes <- function(sep, missing, header, rownames, snp_filename, chunk_size) {
-    if (!file.exists(snp_filename)) {
-        stop(cat(snp_filename, " does not exist", "\n"))
-    }
-    skipRows <- toSkip(header)
-    skipCols <- toSkip(rownames)
-    snps <- SlicedData$new()
-    snps$fileDelimiter <- sep
-    snps$fileOmitCharacters <- missing
-    snps$fileSkipRows <- skipRows
-    snps$fileSkipColumns <- skipCols
-    snps$fileSliceSize <- chunk_size
-    snps$LoadFile(snp_filename)
-    return(snps)
-}
-
-getExpression <- function(sep, missing, header, rownames, expr_filename, chunk_size) {
-    if (!file.exists(expr_filename)) {
-        stop(cat(expr_filename, " does not exist", "\n"))
-    }
-    skipRows <- toSkip(header)
-    skipCols <- toSkip(rownames)
-    gene <- SlicedData$new()
-    gene$fileDelimiter <- sep
-    gene$fileOmitCharacters <- missing
-    gene$fileSkipRows <- skipRows
-    gene$fileSkipColumns <- skipCols
-    gene$fileSliceSize <- chunk_size
-    gene$LoadFile(expr_filename)
-    return(gene)
-}
-
-getCovariates <- function(sep, missing, header, rownames, cvrt_filename) {
-    skipRows <- toSkip(header)
-    skipCols <- toSkip(rownames)
-    cvrt <- SlicedData$new()
-    cvrt$fileDelimiter <- sep
-    cvrt$fileOmitCharacters <- missing
-    cvrt$fileSkipRows <- skipRows
-    if (length(cvrt_filename) == 0) {
-        return(cvrt)
-    }
-    if (!file.exists(cvrt_filename)) {
-        stop(cat(cvrt_filename, " does not exist", "\n"))
-    }
-    cvrt$LoadFile(cvrt_filename)
-    return(cvrt)
-}
-
-mafFilter <- function(snps, MAF) {
-    Mode <- function(x) {
-        ux <- unique(x)
-        ux[which.max(tabulate(match(x, ux)))]
-    }
-
-    cat("SNPs before filtering:", nrow(snps), "\n")
-    maf.list <- vector("list", length(snps))
-    for (sl in 1:length(snps))
-    {
-        slice <- snps[[sl]]
-        maf.list[[sl]] <- rowMeans(slice != apply(slice, 1, Mode), na.rm = T) / 2
-    }
-    maf <- unlist(maf.list)
-    sum(maf >= MAF)
-    snps$RowReorder(maf > MAF)
-    cat("SNPs after filtering:", nrow(snps), "\n")
-    rm(maf, sl, maf.list)
-    return(snps)
-}
+# ... (skipping unchanged code)
 
 setModel <- function(model) {
     model_lower <- tolower(model)
