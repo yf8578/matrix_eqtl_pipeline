@@ -168,6 +168,66 @@ python3 ${CODE_DIR}/run_matrix_eqtl_noloc.py \
     --chunk-size 5000
 ```
 
+### 5. 第四步 (可选): 使用 QTLtools 进行分析
+
+如果你追求更严谨的 FDR 校正（Permutation）或需要进行条件分析，可以使用本流程集成的 QTLtools 模块。
+
+> **官方网站**: [https://qtltools.github.io/qtltools/](https://qtltools.github.io/qtltools/)
+
+我们提供了简化的 Python 封装脚本，帮你自动处理格式转换和命令构建。
+
+#### 5.1 准备数据 (生成 BED 格式)
+
+**场景 A: 有基因位置 (标准 eQTL)**
+
+```bash
+# 自动合并表达量和位置文件，并进行 bgzip/tabix 压缩索引
+python3 ${CODE_DIR}/qtltools_prep.py \
+    --expression ${WORK_DIR}/output/step2_covariates/expression.qnorm \
+    --positions ${GENE_LOC_FILE} \
+    --out ${WORK_DIR}/output/qtltools_input/expression.bed
+```
+
+**场景 B: 无基因位置 (脂质/代谢物)**
+
+```bash
+# 生成伪位置 (默认 chr1:1000 起)
+python3 ${CODE_DIR}/qtltools_prep.py \
+    --expression ${EXP_FILE} \
+    --dummy-pos \
+    --out ${WORK_DIR}/output/qtltools_input/lipid_dummy.bed
+```
+
+*注意：还需要手动准备协变量文件（如果你有的话），可以直接复用 Step 2 的结果：*
+
+```bash
+cp ${WORK_DIR}/output/step2_covariates/final_covariates.txt ${WORK_DIR}/output/qtltools_input/covariates.txt
+```
+
+#### 5.2 运行分析 (Permutation / Nominal / Trans)
+
+使用统一的 `run_qtltools.py` 脚本：
+
+```bash
+# 例子：运行 Cis Permutation (推荐用于 eQTL)
+python3 ${CODE_DIR}/run_qtltools.py \
+    --vcf ${VCF_FILE} \
+    --bed ${WORK_DIR}/output/qtltools_input/expression.bed.gz \
+    --cov ${WORK_DIR}/output/qtltools_input/covariates.txt \
+    --out ${WORK_DIR}/output/qtltools_results/permutations.txt \
+    --mode permute \
+    --permutations 1000
+
+# 例子：运行 Trans 分析 (推荐用于代谢物/无位置性状)
+python3 ${CODE_DIR}/run_qtltools.py \
+    --vcf ${VCF_FILE} \
+    --bed ${WORK_DIR}/output/qtltools_input/lipid_dummy.bed.gz \
+    --cov ${WORK_DIR}/output/qtltools_input/covariates.txt \
+    --out ${WORK_DIR}/output/qtltools_results/trans_results.txt \
+    --mode trans
+```
+
+---
 ---
 
 ## 📜 脚本功能详解
@@ -203,3 +263,61 @@ python3 ${CODE_DIR}/run_matrix_eqtl_noloc.py \
 * `check_covariates.py` (新增质控)
   * **功能**: 计算你的 **已知协变量** 与 **PEER因子** / **表达量PCs** 之间的相关性。
   * **用途**: 帮助你判断哪些协变量是冗余的，或者验证批次效应是否被捕捉到。
+
+---
+
+## 📂 附录：文件格式示例
+
+### 1. MatrixEQTL
+
+**输入：基因型/表达量矩阵 (`.txt` / `.tsv`)**
+
+```tsv
+id      sample1 sample2 sample3 ...
+SNP_01  0       1       2       ...
+SNP_02  1       1       0       ...
+```
+
+**输入：位置文件 (`.txt`)**
+
+```tsv
+geneid  chr     left    right
+Gene_A  1       100     200
+Gene_B  X       500     600
+```
+
+*(注意：MatrixEQTL 不关心表头名称，但顺序必须是 ID, Chr, Pos1, Pos2)*
+
+**输出：结果文件 (`results.txt`)**
+
+```tsv
+SNP     gene    beta    t-stat  p-value FDR
+SNP_01  Gene_A  0.5     2.3     1e-5    0.01
+```
+
+### 2. QTLtools
+
+**输入：表型文件 (`.bed`)**
+*(由 `qtltools_prep.py` 自动生成)*
+
+```tsv
+#Chr    start   end     pid     gid     strand  sample1 sample2 ...
+1       999     1000    Gene_A  Gene_A  .       1.2     -0.5    ...
+1       1999    2000    Gene_B  Gene_B  .       0.8     2.1     ...
+```
+
+**输出：Permutation (`.txt`)**
+
+```tsv
+phe_id  n_var   mle_shape1  mle_shape2  dummy   rel_beta    adj_emp_pval ...
+Gene_A  500     ...         ...         ...     ...         1.2e-4
+```
+
+*(重点关注最后一列 `adj_emp_pval`，即校正后的 P 值)*
+
+**输出：Nominal (`.txt`)**
+
+```tsv
+phe_id  var_id  dist    pval    slope   is_best
+Gene_A  SNP_01  123     1e-5    0.5     1
+```
