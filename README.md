@@ -14,15 +14,45 @@ This pipeline integrates **PLINK** (`process_vcf_plink.py`) and **MatrixEQTL** (
 
 ---
 
+## 🛠️ Environment Setup
+
+We recommend using Conda to manage dependencies and ensure reproducibility.
+
+### 1. Create Base Environment
+
+```bash
+# Create environment with Python 3.9 and R 4.x
+conda create -n eqtl_env python=3.9 r-base=4.3
+conda activate eqtl_env
+
+# Install PLINK (via bioconda)
+conda install -c bioconda plink
+```
+
+### 2. Install Python Dependencies
+
+```bash
+# Install required libraries
+pip install pandas scikit-learn rpy2 matplotlib seaborn
+```
+
+### 3. Install R Dependencies
+
+```bash
+# Install MatrixEQTL
+R -e 'install.packages("MatrixEQTL", repos="http://cran.us.r-project.org")'
+
+# Install PEER (Use the included source package)
+# Option A: From Source (Recommended)
+R CMD INSTALL R_peer_source_1.3.tgz
+
+# Option B: via Conda (Alternative)
+conda install -c bioconda r-peer
+```
+
+---
+
 ## 🚀 Quick Start
-
-### 0. Prerequisites
-
-Ensure the following are installed and in your PATH:
-
-* **PLINK** (v1.9 or v2.0)
-* **Python 3** (with `pandas`, `sklearn`, `rpy2`)
-* **R** (with `MatrixEQTL`, `peer` packages)
 
 ### 1. Set Up Variables
 

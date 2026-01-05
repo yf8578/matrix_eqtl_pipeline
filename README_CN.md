@@ -14,15 +14,45 @@
 
 ---
 
+## 🛠️ 环境配置 (Environment Setup)
+
+为确保流程顺利运行，建议使用 Conda 构建独立环境：
+
+### 1. 创建基础环境
+
+```bash
+# 创建包含 Python 3.9 和 R 4.x 的环境
+conda create -n eqtl_env python=3.9 r-base=4.3
+conda activate eqtl_env
+
+# 安装 PLINK (需添加 bioconda channel)
+conda install -c bioconda plink
+```
+
+### 2. 安装 Python 依赖
+
+```bash
+# 安装分析与绘图所需的包
+pip install pandas scikit-learn rpy2 matplotlib seaborn
+```
+
+### 3. 安装 R 依赖
+
+```bash
+# 安装 MatrixEQTL
+R -e 'install.packages("MatrixEQTL", repos="http://cran.us.r-project.org")'
+
+# 安装 PEER (推荐使用仓库内自带的源码包)
+# 方法 A: 源码安装 (Linux/Mac)
+R CMD INSTALL R_peer_source_1.3.tgz
+
+# 方法 B: Conda 方式 (作为备选)
+conda install -c bioconda r-peer
+```
+
+---
+
 ## 🚀 快速开始 (Quick Start)
-
-### 0. 准备工作
-
-请确保已安装：
-
-* **PLINK** (1.9 或 2.0, 需在 PATH 环境变量中)
-* **Python 3** (需 `pandas`, `sklearn`, `rpy2`)
-* **R** (需 `MatrixEQTL`, `peer` 包)
 
 ### 1. 设置环境变量
 
