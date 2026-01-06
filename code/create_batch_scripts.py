@@ -156,7 +156,7 @@ echo ">>> Step 3: Preparing QTLtools Input..."
         script += f"""
 # Mode: Auto-Fetch from BioMart
 echo "    Fetching positions for ID type: {id_type}..."
-python3 ${{CODE_DIR}}/qtltools_prep.py \\
+python3 ${{CODE_DIR}}/prep_genes.py \\
     --expression "${{OUT_DIR}}/step2_covariates/expression.qnorm" \\
     --fetch-pos \\
     --id-type "{id_type}" \\
@@ -168,7 +168,7 @@ python3 ${{CODE_DIR}}/qtltools_prep.py \\
 export GENE_LOC_FILE="${{OUT_DIR}}/gene_locations_fixed.tsv"
 if [ ! -f "${{GENE_LOC_FILE}}" ]; then sed '1s/features/geneid/' "{loc_file}" > "${{GENE_LOC_FILE}}"; fi
 
-python3 ${{CODE_DIR}}/qtltools_prep.py \\
+python3 ${{CODE_DIR}}/prep_genes.py \\
     --expression "${{OUT_DIR}}/step2_covariates/expression.qnorm" \\
     --positions "${{GENE_LOC_FILE}}" \\
     --out "${{OUT_DIR}}/qtltools_input/expression.bed"

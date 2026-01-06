@@ -106,13 +106,13 @@ bash generated_scripts/run_job_blood_cis_qtltools.sh
 **核心步骤命令示例：**
 
 ```bash
-# 1. 准备 BED 文件 (使用 qtltools_prep.py 辅助)
+# 1. 准备 BED 文件 (使用 prep_genes.py 辅助)
 # 该脚本自动处理：
 #   - 合并表达量和位置文件
 #   - 处理表头 (保证 #chr start end pid gid strand 格式)
 #   - 排序基因组坐标
 #   - bgzip 压缩和 tabix 索引
-python3 code/qtltools_prep.py \
+python3 code/prep_genes.py \
     --expression expression.qnorm \
     --positions gene_locations.tsv \
     --out expression.bed
@@ -138,6 +138,6 @@ QTLtools cis \
 ## 📂 脚本说明
 
 * `code/create_batch_scripts.py`: 批量脚本生成器核心逻辑。
-* `code/qtltools_prep.py`: 专门用于生成 QTLtools 标准 BED 格式的工具。
+* `code/prep_genes.py`: 专门用于生成 QTLtools 标准 BED 格式或 MatrixEQTL 位置文件的全能工具。
 * `code/run_qtltools.py`: (旧版) Python 封装的 QTLtools 运行器，现在推荐在脚本中直接写 `QTLtools` 命令以便于定制。
 * `code/mxeqtl.R`: MatrixEQTL 的 R 核心代码 (已修复 helper function 缺失问题)。
