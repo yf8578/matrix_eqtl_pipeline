@@ -3,173 +3,276 @@ import argparse
 import sys
 import os
 import subprocess
+import requests
+import io
 
 def check_dependencies():
-    """Check if bgzip and tabix are available."""
+    """Check if bgzip and tabix are available (only needed for QTLtools format)."""
     for cmd in ['bgzip', 'tabix']:
         if subprocess.call(['which', cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) != 0:
-            print(f"Error: {cmd} is not found in PATH. Please install htslib/tabix.")
-            sys.exit(1)
+            print(f"Warning: {cmd} is not found in PATH. BED file will not be compressed/indexed.")
+            return False
+    return True
 
 def get_args():
-    parser = argparse.ArgumentParser(description="Prepare Expression Data for QTLtools (BED format + Tabix Index)")
+    parser = argparse.ArgumentParser(description="Prepare Expression/Position Data for MatrixEQTL or QTLtools")
+    
+    # Inputs
     parser.add_argument('--expression', required=True, help='Expression Matrix file (ID in first col)')
-    parser.add_argument('--positions', help='Gene Position file (geneid, chr, left, right). Optional if using --dummy-pos')
-    parser.add_argument('--strand-ref', help='Optional reference file to auto-complete strand info (header: geneid, strand)')
-    parser.add_argument('--fetch-strand', action='store_true', help='Automatically download strand info from BioMart (requires R/biomaRt)')
-    parser.add_argument('--out', required=True, help='Output BED file prefix (e.g. output/qtltools_input/expr)')
-    parser.add_argument('--dummy-pos', action='store_true', help='Generate dummy positions (for simple traits/metabolites)')
+    
+    # Position Source (Mutually Exclusive-ish)
+    parser.add_argument('--positions', help='Local Position file (geneid, chr, left, right)')
+    parser.add_argument('--fetch-pos', action='store_true', help='Auto-download positions from BioMart')
+    parser.add_argument('--gtf', help='Extract positions from local GTF file')
+    parser.add_argument('--dummy-pos', action='store_true', help='Generate dummy positions (1MB spacing)')
     parser.add_argument('--dummy-chr', default='1', help='Chromosome for dummy positions')
+    
+    # Settings
+    parser.add_argument('--id-type', default='ensembl_gene_id', 
+                        help='ID type for fetching/GTF: ensembl_gene_id, external_gene_name, entrezgene_id, uniprot_gn_id')
+    
+    # Output Control
+    parser.add_argument('--out', required=True, help='Output filename prefix or full path')
+    parser.add_argument('--format', choices=['qtltools', 'matrixeqtl'], default='qtltools',
+                        help='Output format. "qtltools": BED.gz with expression. "matrixeqtl": TSV with positions only.')
+    
+    # Legacy
+    parser.add_argument('--strand-ref', help='Optional strand ref file (legacy)')
+    
     return parser.parse_args()
+
+def parse_gtf(gtf_file, target_ids, id_type):
+    """Parse GTF for coordinates."""
+    print(f"Parsing GTF: {gtf_file}...")
+    attr_map = {
+        'ensembl_gene_id': 'gene_id',
+        'external_gene_name': 'gene_name',
+        'gene_id': 'gene_id',
+        'gene_name': 'gene_name',
+        'entrezgene_id': 'db_xref',
+        'uniprot_gn_id': 'NA'
+    }
+    target_attr = attr_map.get(id_type, id_type)
+    
+    if target_attr == 'NA':
+        print(f"Warning: ID type {id_type} not typically supported in GTF parsing.")
+        
+    results = {}
+    target_set = set(target_ids)
+    
+    opener = open
+    if gtf_file.endswith('.gz'):
+        import gzip
+        opener = gzip.open
+        
+    try:
+        with opener(gtf_file, 'rt') as f:
+            for line in f:
+                if line.startswith('#'): continue
+                parts = line.split('\t')
+                if len(parts) < 9: continue
+                if parts[2] != 'gene': continue
+                
+                attrs = parts[8]
+                # Fast heuristic search
+                if target_attr not in attrs: continue
+                
+                # Extract value: key "value";
+                # Find key
+                k_idx = attrs.find(target_attr)
+                v_start = attrs.find('"', k_idx) + 1
+                v_end = attrs.find('"', v_start)
+                if v_start == 0 or v_end == -1: continue
+                
+                val = attrs[v_start:v_end]
+                
+                if val in target_set:
+                    results[val] = [val, parts[0], int(parts[3]), int(parts[4]), parts[6]]
+                    
+    except Exception as e:
+        print(f"Error reading GTF: {e}")
+        return pd.DataFrame()
+        
+    if not results: return pd.DataFrame()
+    return pd.DataFrame.from_dict(results, orient='index', columns=['geneid', 'chr', 'left', 'right', 'strand'])
+
+def fetch_biomart_positions(ids, id_type='ensembl_gene_id'):
+    print(f"Querying BioMart for {len(ids)} IDs ({id_type})...")
+    
+    # Map to BioMart Attributes
+    # List: http://www.ensembl.org/biomart/martview
+    mart_attr_map = {
+        'ensembl_gene_id': 'ensembl_gene_id',
+        'ensembl': 'ensembl_gene_id',
+        'external_gene_name': 'external_gene_name',
+        'symbol': 'external_gene_name',
+        'entrezgene_id': 'entrezgene_id',
+        'entrez': 'entrezgene_id',
+        'uniprot_gn_id': 'uniprot_gn_id', # UniProt Gene Name
+        'uniprot': 'uniprot_gn_id'
+        # Note: UniProt Accession is 'uniprot_gn_symbol' or 'uniprotswissprot' etc.
+    }
+    query_attr = mart_attr_map.get(id_type, id_type)
+    
+    chunk_size = 200
+    unique_ids = list(set(ids))
+    all_res = []
+    
+    xml_template = """<!DOCTYPE Query>
+    <Query  virtualSchemaName = "default" formatter = "TSV" header = "0" uniqueRows = "1" count = "" datasetConfigVersion = "0.6" >
+        <Dataset name = "hsapiens_gene_ensembl" interface = "default" >
+            <Filter name = "{filter_name}" value = "{val}"/>
+            <Attribute name = "{filter_name}" />
+            <Attribute name = "chromosome_name" />
+            <Attribute name = "start_position" />
+            <Attribute name = "end_position" />
+            <Attribute name = "strand" />
+        </Dataset>
+    </Query>"""
+    
+    for i in range(0, len(unique_ids), chunk_size):
+        chunk = unique_ids[i:i+chunk_size]
+        vals = ",".join([str(x).strip() for x in chunk])
+        query = xml_template.format(filter_name=query_attr, val=vals)
+        
+        try:
+            r = requests.post("http://www.ensembl.org/biomart/martservice", data={'query': query})
+            r.raise_for_status()
+            if not r.text.strip(): continue
+            
+            # Read
+            df = pd.read_csv(io.StringIO(r.text), sep='\t', header=None, dtype=str)
+            # Expect 5 cols
+            if df.shape[1] >= 5:
+                df = df.iloc[:, :5]
+                df.columns = ['geneid', 'chr', 'left', 'right', 'strand']
+                all_res.append(df)
+        except Exception as e:
+            print(f"Warning: Batch failed: {e}")
+            
+    if not all_res: return pd.DataFrame()
+    final = pd.concat(all_res)
+    
+    # Filter standard chromosomes
+    valid = set([str(x) for x in range(1,23)] + ['X','Y','MT','M'])
+    final = final[final['chr'].isin(valid)]
+    
+    # Dedup
+    final = final.drop_duplicates(subset=['geneid'])
+    
+    return final
 
 def main():
     args = get_args()
-    check_dependencies()
+    has_tools = check_dependencies()
     
-    # Create output dir if needed
-    out_dir = os.path.dirname(args.out)
-    if out_dir and not os.path.exists(out_dir):
-        os.makedirs(out_dir)
-
-    # Handle Auto-Fetch
-    temp_ref_file = None
-    if args.fetch_strand:
-        print(">>> Auto-fetching BioMart reference data...")
-        # Assume R script is in same directory as this python script
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        r_script = os.path.join(script_dir, "fetch_biomart_positions.R")
-        
-        if not os.path.exists(r_script):
-            print(f"Error: Helper script not found at {r_script}")
-            sys.exit(1)
-            
-        temp_ref_file = args.out + ".biomart_temp.txt"
-        try:
-            subprocess.check_call(['Rscript', r_script, temp_ref_file])
-            args.strand_ref = temp_ref_file
-            print(f"    Fetched to {temp_ref_file}")
-        except subprocess.CalledProcessError:
-            print("Error: Failed to fetch BioMart data. Please check if R and biomaRt are installed.")
-            # Remove temp if exists
-            if os.path.exists(temp_ref_file): os.remove(temp_ref_file)
-            sys.exit(1)
-        
-    final_bed = args.out
-    if not final_bed.endswith('.bed'):
-        final_bed += '.bed'
-
-    print(f"Reading expression: {args.expression}")
+    # 1. Read Expression
+    print(f"Reading Expression: {args.expression}")
     expr = pd.read_csv(args.expression, sep='\t')
-    # Use the first column as ID (rename to geneid for consistency)
-    id_col = expr.columns[0]
-    expr.rename(columns={id_col: 'geneid'}, inplace=True)
-
-    # DataFrame to construct BED
-    # Format: #Chr, start, end, pid, gid, strand, samples...
+    # Rename ID col
+    expr.rename(columns={expr.columns[0]: 'geneid'}, inplace=True)
+    expr['geneid'] = expr['geneid'].astype(str)
+    
+    ids = expr['geneid'].tolist()
+    
+    # 2. Get Positions
+    pos_df = pd.DataFrame()
     
     if args.dummy_pos:
-        print(f"Generating dummy positions on chr{args.dummy_chr}...")
-        n_feat = len(expr)
-        # 1000, 2000, 3000...
-        starts = [1000 + i*1000 for i in range(n_feat)]
-        
-        bed = pd.DataFrame()
-        bed['#Chr'] = [args.dummy_chr] * n_feat
-        bed['start'] = starts
-        bed['end'] = [s + 100 for s in starts]
-        bed['pid'] = expr['geneid']
-        bed['gid'] = expr['geneid']
-        bed['strand'] = '.'
-        
-        # Add sample data
-        bed = pd.concat([bed, expr.iloc[:, 1:]], axis=1)
-        
+        print("Generating dummy positions...")
+        starts = [1000 + i*1000 for i in range(len(ids))]
+        pos_df = pd.DataFrame({
+            'geneid': ids,
+            'chr': [args.dummy_chr]*len(ids),
+            'left': starts,
+            'right': [s+100 for s in starts],
+            'strand': ['.']*len(ids)
+        })
+    elif args.fetch_pos:
+        pos_df = fetch_biomart_positions(ids, args.id_type)
+    elif args.gtf:
+        if not os.path.exists(args.gtf):
+             print(f"Error: GTF not found: {args.gtf}")
+             sys.exit(1)
+        pos_df = parse_gtf(args.gtf, ids, args.id_type)
+    elif args.positions:
+        print(f"Reading positions file: {args.positions}")
+        pos_df = pd.read_csv(args.positions, sep='\t')
+        pos_df.columns = [c.lower() for c in pos_df.columns]
+        # Map cols
+        if 'features' in pos_df.columns: pos_df.rename(columns={'features': 'geneid'}, inplace=True)
+        if 'start' in pos_df.columns: pos_df.rename(columns={'start': 'left'}, inplace=True)
+        if 'end' in pos_df.columns: pos_df.rename(columns={'end': 'right'}, inplace=True)
+        if 's1' in pos_df.columns: pos_df.rename(columns={'s1': 'left'}, inplace=True)
+        if 's2' in pos_df.columns: pos_df.rename(columns={'s2': 'right'}, inplace=True)
     else:
-        if not args.positions:
-            print("Error: --positions file is required unless --dummy-pos is specified.")
-            sys.exit(1)
+        print("Error: No position source specified.")
+        sys.exit(1)
+        
+    if pos_df.empty:
+        print("Error: No positions found/matched.")
+        sys.exit(1)
+        
+    # Standardize Pos DF
+    pos_df['geneid'] = pos_df['geneid'].astype(str)
+    if 'strand' not in pos_df.columns: pos_df['strand'] = '.'
+    
+    # 3. Merge
+    print("Merging features...")
+    # Inner join to keep only matching genes
+    merged = pd.merge(expr, pos_df, on='geneid', how='inner')
+    print(f"  Matched {len(merged)} features.")
+    
+    # 4. Output
+    if args.format == 'matrixeqtl':
+        out_file = args.out
+        if not out_file.endswith('.txt') and not out_file.endswith('.tsv'):
+            out_file += '.txt'
             
-        print(f"Reading positions: {args.positions}")
-        pos = pd.read_csv(args.positions, sep='\t')
-        # Normalize headers
-        pos.columns = [c.lower() for c in pos.columns]
-        if 'features' in pos.columns: pos.rename(columns={'features': 'geneid'}, inplace=True)
+        print(f"Writing MatrixEQTL Position file to: {out_file}")
+        # Columns: geneid, chr, left, right
+        final = merged[['geneid', 'chr', 'left', 'right']]
+        final.to_csv(out_file, sep='\t', index=False)
+        print("Done.")
         
-        # Merge
-        print("Merging expression and positions...")
-        merged = pd.merge(pos, expr, on='geneid', how='inner')
-        print(f"  Matched {len(merged)} genes.")
-        
+    else: # qtltools
+        print("Preparing BED format...")
+        # Columns: #Chr, start, end, pid, gid, strand, samples...
         bed = pd.DataFrame()
         bed['#Chr'] = merged['chr'].astype(str)
-        bed['start'] = merged['left'].astype(int)
+        # BED is 0-based start
+        bed['start'] = merged['left'].astype(int) - 1
         bed['end'] = merged['right'].astype(int)
         bed['pid'] = merged['geneid']
         bed['gid'] = merged['geneid']
         
-        # Helper to format strand
-        def format_strand(x):
-            s = str(x).strip()
-            if s == '1' or s == '+': return '+'
-            if s == '-1' or s == '-': return '-'
+        # Strand Format
+        def fix_strand(x):
+            if x in ['1', '+']: return '+'
+            if x in ['-1', '-']: return '-'
             return '.'
-
-        # Handle Strand
-        if 'strand' in merged.columns:
-            print("  Using existing 'strand' column from position file.")
-            bed['strand'] = merged['strand'].apply(format_strand)
-        elif args.strand_ref:
-            print(f"  Auto-completing 'strand' using reference: {args.strand_ref}")
-            ref = pd.read_csv(args.strand_ref, sep='\t')
-            ref.columns = [c.lower() for c in ref.columns]
-            
-            # Keep only unique geneid to avoid dupes
-            if 'geneid' not in ref.columns:
-                 # Try to guess
-                 ref.rename(columns={ref.columns[0]: 'geneid'}, inplace=True)
-            
-            ref = ref.drop_duplicates('geneid')
-            
-            # Map
-            ref_dict = dict(zip(ref['geneid'], ref['strand']))
-            
-            # Apply
-            # Default to '.' if not found in ref
-            bed['strand'] = merged['geneid'].map(ref_dict).fillna('.').apply(format_strand)
-            print("  Strand auto-completion done.")
-        else:
-            print("  No 'strand' column and no reference provided. Defaulting to '.'")
-            bed['strand'] = '.'
+        bed['strand'] = merged['strand'].apply(fix_strand)
         
-        # Clean up temp file
-        if temp_ref_file and os.path.exists(temp_ref_file):
-            print(f"Removing temp file: {temp_ref_file}")
-            os.remove(temp_ref_file)
-            
-        # Add sample columns
-        sample_cols = [c for c in expr.columns if c != 'geneid']
-        bed = pd.concat([bed, merged[sample_cols]], axis=1)
-
-    # Sort
-    print("Sorting BED file...")
-    # Sort key: Chromosome (str) then Start (int)
-    # Note: Traditional sort -k1,1 -k2,2n is handled by pandas sort_values
-    bed.sort_values(by=['#Chr', 'start'], ascending=[True, True], inplace=True)
-
-    # Save Uncompressed
-    print(f"Writing to {final_bed}...")
-    bed.to_csv(final_bed, sep='\t', index=False, header=True, float_format='%.5g')
-
-    # bgzip
-    print("Compressing with bgzip...")
-    subprocess.check_call(f"bgzip -f {final_bed}", shell=True)
-    gz_file = final_bed + ".gz"
-    
-    # tabix
-    print("Indexing with tabix...")
-    subprocess.check_call(f"tabix -p bed {gz_file}", shell=True)
-
-    print(f"Success! Output ready: {gz_file}")
+        # Samples
+        samples = [c for c in expr.columns if c != 'geneid']
+        bed = pd.concat([bed, merged[samples]], axis=1)
+        
+        # Sort
+        bed.sort_values(by=['#Chr', 'start'], ascending=[True, True], inplace=True)
+        
+        out_bed = args.out
+        if not out_bed.endswith('.bed'): out_bed += '.bed'
+        
+        print(f"Writing BED: {out_bed}")
+        bed.to_csv(out_bed, sep='\t', index=False, float_format='%.5g')
+        
+        if has_tools:
+            print("Compressing & Indexing...")
+            subprocess.check_call(f"bgzip -f {out_bed}", shell=True)
+            subprocess.check_call(f"tabix -p bed {out_bed}.gz", shell=True)
+            print(f"Output: {out_bed}.gz")
+        else:
+            print(f"Output: {out_bed} (Uncompressed)")
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,3 @@
+id,work_dir,vcf,expression,location,id_type,peer
+job_auto_ensembl,/data/auth_fetch_test/job1,/data/vcf/chr1.vcf.gz,/data/exp/matrix_ensembl.tsv,fetch,ensembl_gene_id,15
+job_auto_symbol,/data/auth_fetch_test/job2,/data/vcf/chr1.vcf.gz,/data/exp/matrix_symbols.tsv,fetch,external_gene_name,15

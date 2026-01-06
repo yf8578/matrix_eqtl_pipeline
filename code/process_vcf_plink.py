@@ -83,7 +83,7 @@ def main():
 
     # 2. Process Genotype Matrix (Chunked)
     print("  Processing genotype matrix (Chunked)...")
-    chunk_size = 100000 
+    chunk_size = 10000 
     first_chunk = True
     
     try:

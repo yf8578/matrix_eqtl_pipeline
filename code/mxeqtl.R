@@ -1,5 +1,6 @@
 library(MatrixEQTL)
 
+# ... (previous code)
 toSkip <- function(exists) {
     if (exists) {
         return(1)
@@ -7,6 +8,52 @@ toSkip <- function(exists) {
         return(0)
     }
 }
+
+getGenotypes <- function(sep, missing, header, rownames, snp_file, chunk_size) {
+    snps <- SlicedData$new()
+    snps$fileDelimiter <- sep
+    snps$fileOmitCharacters <- missing
+    snps$fileSkipRows <- if (header) 1 else 0
+    snps$fileSkipColumns <- if (rownames) 1 else 0
+    snps$fileSliceSize <- chunk_size
+    snps$LoadFile(snp_file)
+    return(snps)
+}
+
+getExpression <- function(sep, missing, header, rownames, expr_file, chunk_size) {
+    gene <- SlicedData$new()
+    gene$fileDelimiter <- sep
+    gene$fileOmitCharacters <- missing
+    gene$fileSkipRows <- if (header) 1 else 0
+    gene$fileSkipColumns <- if (rownames) 1 else 0
+    gene$fileSliceSize <- chunk_size
+    gene$LoadFile(expr_file)
+    return(gene)
+}
+
+getCovariates <- function(sep, missing, header, rownames, cov_file) {
+    cvrt <- SlicedData$new()
+    if (!is.null(cov_file) && cov_file != "") {
+        cvrt$fileDelimiter <- sep
+        cvrt$fileOmitCharacters <- missing
+        cvrt$fileSkipRows <- if (header) 1 else 0
+        cvrt$fileSkipColumns <- if (rownames) 1 else 0
+        if (file.exists(cov_file)) {
+            cvrt$LoadFile(cov_file)
+        }
+    }
+    return(cvrt)
+}
+
+mafFilter <- function(snps, MAF) {
+    maf <- snps$RowCheckFun(function(row) {
+        m <- mean(row, na.rm = TRUE) / 2
+        min(m, 1 - m)
+    })
+    snps$RowReorder(maf >= MAF)
+    return(snps)
+}
+
 # ... (skipping unchanged code)
 
 setModel <- function(model) {

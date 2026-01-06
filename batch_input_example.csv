@@ -1,0 +1,3 @@
+id,vcf,expression,location,work_dir,peer,cis_dist,p_cis,p_trans,maf
+job01,/data/work/SNP_data/all/merged.vcf.gz,/data/work/xQTL/data/exp1.tsv,/data/work/xQTL/data/gene_loc.tsv,/data/work/new_QTL/batch_out/job01,15,1000000,1e-5,1e-5,0.05
+job02_no_loc,/data/work/SNP_data/all/merged.vcf.gz,/data/work/xQTL/data/lipid.tsv,NA,/data/work/new_QTL/batch_out/job02,10,0,0,1e-5,0.01
