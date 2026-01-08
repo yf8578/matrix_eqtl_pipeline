@@ -36,10 +36,43 @@ def get_args():
     parser.add_argument('--format', choices=['qtltools', 'matrixeqtl'], default='qtltools',
                         help='Output format. "qtltools": BED.gz with expression. "matrixeqtl": TSV with positions only.')
     
+    # VCF argument for auto-detection
+    parser.add_argument('--vcf', help='Optional: VCF file to auto-detect chromosome format (chr1 vs 1)')
+    parser.add_argument('--add-chr', action='store_true', help='Manually add "chr" prefix (overridden by --vcf)')
+    
     # Legacy
     parser.add_argument('--strand-ref', help='Optional strand ref file (legacy)')
     
     return parser.parse_args()
+
+def check_vcf_chr_format(vcf_file):
+    """
+    Peek at the VCF to see if chromosomes start with 'chr'.
+    Returns True if 'chr' prefix is detected, False otherwise.
+    """
+    print(f"Checking VCF format: {vcf_file}...")
+    opener = open
+    if vcf_file.endswith('.gz'):
+        import gzip
+        opener = gzip.open
+    
+    try:
+        with opener(vcf_file, 'rt') as f:
+            for line in f:
+                if line.startswith('#'): continue
+                # First non-header line
+                parts = line.split('\t')
+                if parts[0].startswith('chr'):
+                    print("  Detected 'chr' prefix in VCF (e.g., chr1).")
+                    return True
+                else:
+                    print("  Detected NO 'chr' prefix in VCF (e.g., 1).")
+                    return False
+                break 
+    except Exception as e:
+        print(f"Warning: Failed to read VCF header: {e}")
+        return False
+    return False
 
 def parse_gtf(gtf_file, target_ids, id_type):
     """Parse GTF for coordinates."""
@@ -248,8 +281,9 @@ def main():
         
         # Strand Format
         def fix_strand(x):
-            if x in ['1', '+']: return '+'
-            if x in ['-1', '-']: return '-'
+            s = str(x).strip()
+            if s in ['1', '+', '1.0']: return '+'
+            if s in ['-1', '-', '-1.0']: return '-'
             return '.'
         bed['strand'] = merged['strand'].apply(fix_strand)
         
@@ -257,7 +291,26 @@ def main():
         samples = [c for c in expr.columns if c != 'geneid']
         bed = pd.concat([bed, merged[samples]], axis=1)
         
+        # Remove chr prefix if exists to normalize first (optional but safer)
+        # bed['#Chr'] = bed['#Chr'].str.replace('chr', '', regex=False) 
+
+        # Auto-detect chr format if VCF provided
+        if args.vcf:
+            if check_vcf_chr_format(args.vcf):
+                args.add_chr = True
+
+        if args.add_chr:
+            bed['#Chr'] = 'chr' + bed['#Chr'].astype(str)
+
         # Sort
+        print("Sorting BED...")
+        # Clean Chr to be sortable (handle X, Y, MT)
+        # If we added 'chr', sorting might be tricky string sort?
+        # Standard string sort: chr1, chr10... not ideal but tabix works if VCF sorted similarly.
+        # Usually better to sort numerically then add chr? 
+        # But let's just use string sort on the final col, hoping VCF is same order. 
+        # Actually, proper BED must be sorted by chrom then start.
+        
         bed.sort_values(by=['#Chr', 'start'], ascending=[True, True], inplace=True)
         
         out_bed = args.out

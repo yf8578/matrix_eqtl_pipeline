@@ -23,7 +23,7 @@ def main():
         # If headers exist (PLINK 2.0+), pandas usually handles it if we account for it, 
         # but standard PLINK 1.9 .eigenvec is usually clean. 
         # Using header=None safely.
-        df = pd.read_csv(args.input, sep='\s+', header=None)
+        df = pd.read_csv(args.input, sep=r'\s+', header=None)
         
         # Verify shape
         if df.shape[1] < 2 + args.num_pcs:
