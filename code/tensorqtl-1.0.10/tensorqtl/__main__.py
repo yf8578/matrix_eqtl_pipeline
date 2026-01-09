@@ -1,2 +1,0 @@
-import tensorqtl
-tensorqtl.main()
