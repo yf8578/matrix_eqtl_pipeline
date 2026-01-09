@@ -38,9 +38,10 @@ def process_expression(expression_file, samples, output_dir, filter_low_expr=Tru
         # 1. Filter by Low Expression
         skip_tpm = filter_args.get('skip_tpm', False)
         
+        n_samples = len(common)
+        
         if not skip_tpm:
             # Calc threshold count
-            n_samples = len(common)
             thresh = min_samples_abs if min_samples_abs > 0 else int(n_samples * min_samples_rel)
             
             # Keep if > min_tpm in >= thresh samples
@@ -87,7 +88,12 @@ def process_expression(expression_file, samples, output_dir, filter_low_expr=Tru
             return norm.ppf(quantiles)
 
         # Apply row-wise (per gene)
-        df_norm = df.apply(inverse_normal_transform, axis=1)
+        # Apply row-wise (per gene)
+        # Using result_type='expand' to ensure we get a DataFrame back, not a Series of arrays
+        df_norm = df.apply(inverse_normal_transform, axis=1, result_type='expand')
+        
+        # Ensure columns are preserved (though apply(axis=1) usually preserves index as index, and result becomes columns)
+        df_norm.columns = df.columns
         df_norm.to_csv(iqn_file, sep='\t')
         final_file = iqn_file
         

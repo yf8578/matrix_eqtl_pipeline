@@ -14,7 +14,7 @@ export PYTHONPATH=$PROJ_DIR/src
 
 VCF_FILE="/data/work/SNP_data/control/only_control_20240613_v2.vcf.gz"
 EXPR_FILE="/data/work/xQTL/pQTL/01_data/control/49_control_protein_expression_matrix.tsv"
-OUTPUT_DIR="results_control"
+OUTPUT_DIR="/data/work/QTLpipeline/matrix_eqtl_pipeline/results_control"
 
 mkdir -p $OUTPUT_DIR
 
@@ -31,7 +31,7 @@ python3 src/matrix_eqtl/preprocessing/locations.py \
     --out "$OUTPUT_DIR/gene_locations.txt" \
     --format matrixeqtl \
     --fetch-pos \
-    --id-type ensembl_gene_id
+    --id-type uniprot_gn_id
     
 if [ $? -ne 0 ]; then
     echo "Warning: Step 0 failed (probably network). Continuing..."
@@ -108,29 +108,16 @@ echo "[Step 4c] Combining Covariates..."
 # Or just use the original covariates.py but with pca=0 and peer=0? 
 # No, `covariates.py` generates them.
 
-# Let's perform a robust merge using python in-line
-python3 -c "
-import pandas as pd
-import os
-out_dir = '$OUTPUT_DIR/covariates'
-pca_file = os.path.join(out_dir, 'genotype_pcs.txt')
-peer_file = os.path.join(out_dir, 'peer_factors.tsv')
-out_file = os.path.join(out_dir, 'final_covariates.txt')
+# Optional: Path to user-defined covariates (e.g. sex, age)
+KNOWN_COV_FILE="/data/work/new_QTL/output/step2_covariates/20260107_sample_info_for_zyf.csv" 
 
-dfs = []
-if os.path.exists(pca_file):
-    dfs.append(pd.read_csv(pca_file, sep='\t', index_col=0))
-if os.path.exists(peer_file):
-    dfs.append(pd.read_csv(peer_file, sep='\t', index_col=0))
-
-if dfs:
-    final = pd.concat(dfs, axis=0, join='inner')
-    final.to_csv(out_file, sep='\t')
-    print(f'Combined covariates saved to {out_file}')
-else:
-    print('No covariates found to combine.')
-" \
-    --threads 4
+# Concatenate PCA + PEER + Known
+# Also plots correlation matrix
+python3 src/matrix_eqtl/preprocessing/combine_covariates.py \
+    --pca "$OUTPUT_DIR/covariates/genotype_pcs.txt" \
+    --peer "$OUTPUT_DIR/covariates/peer_factors.tsv" \
+    --known "$KNOWN_COV_FILE" \
+    --out-dir "$OUTPUT_DIR/covariates"
 
 # -----------------------------------------------------------------------------
 # Step 5: Run

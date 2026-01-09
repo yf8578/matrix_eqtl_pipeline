@@ -8,8 +8,28 @@ import rpy2.robjects as ro
 from rpy2.robjects.packages import importr
 
 def run_peer(expression_file, output_dir, peer_n=5, known_covariates=None):
-    output_dir = Path(output_dir)
+    output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Resolve absolute path for expression file
+    expr_path = Path(expression_file).resolve()
+    if not expr_path.exists():
+        print(f"ERROR: Expression file not found at: {expr_path}")
+        print(f"       (Provided input: {expression_file})")
+        print(f"       (Current Working Dir: {os.getcwd()})")
+        
+        # Check if it was a relative path issue
+        if not Path(expression_file).is_absolute():
+             print("       Hint: Try providing the FULL ABSOLUTE PATH.")
+             
+        # List dir content if parent exists
+        if expr_path.parent.exists():
+             print(f"       Contents of {expr_path.parent}:")
+             for f in list(expr_path.parent.iterdir())[:5]: # Show first 5
+                 print(f"         {f.name}")
+        sys.exit(1)
+        
+    print(f"Resolved Expression File: {expr_path}")
     
     peer_out = output_dir / "peer_factors.tsv"
     
@@ -56,6 +76,13 @@ def run_peer(expression_file, output_dir, peer_n=5, known_covariates=None):
     utils.write_table(factors, str(temp_peer), sep="\t", quote=False, row_names=True, col_names=True)
     
     df_peer = pd.read_csv(temp_peer, sep='\t', index_col=0)
+    
+    # R script adds an 'ID' column with PEER1, PEER2...
+    # The default read_csv(index_col=0) might read the meaningless row numbers "1","2" as index.
+    # If there is an 'ID' column, use it as the index.
+    if 'ID' in df_peer.columns:
+        df_peer = df_peer.set_index('ID')
+        df_peer.index.name = None # Remove the name 'ID' to match other files style
     
     # Transpose if needed
     # PEER usually returns Factors x Samples? Or Samples x Factors?

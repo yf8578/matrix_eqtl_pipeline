@@ -65,8 +65,8 @@ def process_genotype(vcf_file, samples, output_dir, target_tool, maf="0.01", gen
         # matrixeqtl wants: id sample1 sample2 ...
         
         chunk_size = 50000 
-        # Metadata cols to drop
-        drop_cols = ['CHR', '(CM)', 'POS', 'COUNTED', 'ALLELE']
+        # Metadata cols to drop (PLINK .traw format variances)
+        drop_cols = ['CHR', '(CM)', '(C)M', 'POS', 'COUNTED', 'ALLELE', 'ALT']
         
         first_chunk = True
         
@@ -87,42 +87,13 @@ def process_genotype(vcf_file, samples, output_dir, target_tool, maf="0.01", gen
                 new_cols = {}
                 for c in chunk.columns:
                     if c == 'id': continue
-                    # Logic: if column looks like "SampleA_SampleA", take "SampleA"
-                    # Or just take the part after the last underscore if we are sure?
-                    # Safer: known samples check?
-                    # Let's assume FID_IID format.
-                    # Since we set FID=IID, we can just split by _ and take the last part? 
-                    # Or better: check if `s_s` is in the samples list we want? No, we want `s`.
-                    # Let's define a cleaner function:
-                    if '_' in c:
-                        # try exact match with our samples list?
-                        # This might be slow for 10M rows loop, but we only do it on columns map
-                        pass
                     
-                    # Heuristic: split on first `_`?
-                    # If ID itself has `_`, PLINK joins FID_IID with `_`.
-                    # If FID=IID="A_B", PLINK might output "A_B_A_B".
-                    # If we set FID=IID, we expect "ID_ID".
-                    # Let's try to match the prefix.
+                    # Logic: PLINK .traw format usually outputs FID_IID (e.g. "Sample1_Sample1")
+                    # We need to map this back to the original sample ID "Sample1"
                     
-                    # Robust cleanup: 
-                    # If col starts with its own suffix + "_"?
-                    # Actually, we passed `samples`. We know what we entered.
-                    # We just need to find which col matches which sample.
-                    # PLINK preserves simple IDs usually.
-                    
-                    # Simple fix: split by LAST underscore if FID=IID
-                    # But if ID has no underscore, PLINK might output 0_ID?
-                    # We used `keep_samples.txt` with `s s`. So FID=s.
-                    # So PLINK outputs `s_s`.
-                    
-                    # Strategy: If ID is in our expected samples, keep it.
-                    # If not, try stripping `s_`.
-                    # Pythonic:
                     clean_id = c
                     if c not in samples:
-                         # Try removing duplication "X_X" -> "X"
-                         # Check if string is two halves equal?
+                         # Try removing duplication "X_X" -> "X" caused by FID=IID
                          mid = len(c) // 2
                          if len(c) % 2 == 1 and c[mid] == '_':
                              if c[:mid] == c[mid+1:]:

@@ -5,34 +5,33 @@ import sys
 import io
 import argparse
 import os
-from check_file import check_file
-
-
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-m', '--genotype-matrix', required=True, help='')
-    parser.add_argument('-p', '--genotype-positions', required=False, default=None, help='')
-    parser.add_argument('-e', '--gene-expression-matrix', required=True, help='')
-    parser.add_argument('-g', '--gene-positions', required=False, default=None, help='')
-    parser.add_argument('-c', '--covariates', help='')
-    parser.add_argument('-o', '--output-file', default='MatrixEqtlOutput', help='')
-    parser.add_argument('-v', '--p-value', type=float, default=0.05, help='')
-    parser.add_argument('-q', '--qq-plot', default='MatrixEqtlQQPlot.pdf', help='')
-    parser.add_argument('--trans-output-file', default="", help='')
-    parser.add_argument('--trans-p-value', type=float, default=0.0, help='')
-    parser.add_argument('--model', default='linear', choices={'linear', 'anova', 'linear_cross'}, help='')
-    parser.add_argument('--cis-distance', type=float, default=1e6, help='')
-    parser.add_argument('--maf', default=0.0, help='')
-    parser.add_argument('--no-header', action='store_false', help='')
-    parser.add_argument('--no-rownames', action='store_false', help='')
-    parser.add_argument('--missing', default='NA', help='')
-    parser.add_argument('--sep', default='\t', help='')
-    parser.add_argument('--chunk-size', type=int, default=2000, help='')
+    parser.add_argument('-m', '--genotype-matrix', required=True, help='Path to genotype matrix')
+    parser.add_argument('-p', '--genotype-positions', required=False, default=None, help='Path to genotype positions')
+    parser.add_argument('-e', '--gene-expression-matrix', required=True, help='Path to expression matrix')
+    parser.add_argument('-g', '--gene-positions', required=False, default=None, help='Path to gene positions')
+    parser.add_argument('-c', '--covariates', help='Path to covariates file')
+    parser.add_argument('-o', '--output-file', default='MatrixEqtlOutput', help='Main output file')
+    parser.add_argument('-v', '--p-value', type=float, default=0.05, help='P-value threshold')
+    parser.add_argument('-q', '--qq-plot', default='MatrixEqtlQQPlot.pdf', help='QQ Plot output')
+    parser.add_argument('--trans-output-file', default="", help='Separate output for Trans-eQTLs')
+    parser.add_argument('--trans-p-value', type=float, default=0.0, help='P-value threshold for Trans')
+    parser.add_argument('--model', default='linear', choices={'linear', 'anova', 'linear_cross'}, help='Model type')
+    parser.add_argument('--cis-distance', type=float, default=1e6, help='Cis distance cutoff')
+    parser.add_argument('--maf', default=0.0, help='MAF threshold')
+    parser.add_argument('--no-header', action='store_false', help='Input files have no header')
+    parser.add_argument('--no-rownames', action='store_false', help='Input files have no row names')
+    parser.add_argument('--missing', default='NA', help='Missing value indicator')
+    parser.add_argument('--sep', default='\t', help='Separator')
+    parser.add_argument('--chunk-size', type=int, default=2000, help='Chunk size')
     parser.add_argument('--no-fdr', action='store_true', help='Do not calculate FDR (saves memory)')
 
     args = parser.parse_args()
-
-    check_file(args.genotype_matrix)
+    
+    if not os.path.exists(args.genotype_matrix):
+        print(f"Error: Genotype matrix invalid or not found: {args.genotype_matrix}")
+        sys.exit(1)
 
     return(args)
 

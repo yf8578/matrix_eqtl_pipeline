@@ -5,7 +5,16 @@ get_colname <- function(number) {
 }
 
 peer_function <- function(input_file, numfactors, cov_file = NULL) {
-  expr <- read.table(input_file, header = T, row.names = 1, check.names = F, sep = "\t", quote = "")
+  # DEBUG: Print file head
+  cat("DEBUG: Head of input file:\n")
+  print(readLines(input_file, n = 5))
+
+  # Try reading without row.names first to be safe
+  expr <- read.table(input_file, header = T, check.names = F, sep = "\t", quote = "")
+  if (ncol(expr) > 1 && class(expr[, 1]) != "numeric") {
+    rownames(expr) <- expr[, 1]
+    expr <- expr[, -1]
+  }
 
   # Ensure numeric
   if (!all(sapply(expr, is.numeric))) {
