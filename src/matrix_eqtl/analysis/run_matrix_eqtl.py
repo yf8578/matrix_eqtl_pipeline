@@ -160,15 +160,36 @@ def main():
 
     r = ro.r
 
-    # Determine directory where this script resides
+    # Determine directory where this script resides and find R scripts
+    # Script is in src/matrix_eqtl/analysis/
+    # R scripts are in r_src/ (Project Root)
+    # Go up 3 levels from script dir
     script_dir = os.path.dirname(os.path.realpath(__file__))
+    project_root = os.path.abspath(os.path.join(script_dir, "../../../"))
+    r_src_dir = os.path.join(project_root, "r_src")
+    
+    if not os.path.exists(r_src_dir):
+        # Fallback: maybe we are running from root and things are moved? 
+        # Just try to find it relative to CWD if all else fails, or assume 'r_src' in sibling?
+        # But standard layout is consistent.
+        print(f"Warning: R source dir not found at calculated path: {r_src_dir}")
+        
+    def get_r_script(name):
+        p = os.path.join(r_src_dir, name)
+        if not os.path.exists(p):
+             # Try local dir just in case
+             p_local = os.path.join(script_dir, name)
+             if os.path.exists(p_local): return p_local
+             print(f"Error: R script {name} not found at {p}")
+             sys.exit(1)
+        return p
 
     # Check Mode
     has_loc = (args.genotype_positions is not None) and (args.gene_positions is not None)
 
     if has_loc:
         print(">>> Running Standard Mode (Cis/Trans with Locations)...")
-        r.source(os.path.join(script_dir, "mxeqtl.R"))
+        r.source(get_r_script("mxeqtl.R"))
         r.mxeqtl(args.genotype_matrix, args.genotype_positions, args.gene_expression_matrix, args.gene_positions,
                  covariates=args.covariates, cis_output_file=args.output_file, cis_pval=args.p_value, trans_output_file=args.trans_output_file,
                  trans_pval=args.trans_p_value, cis_dist=args.cis_distance, MAF=args.maf, qq=args.qq_plot, model=args.model,
@@ -178,7 +199,7 @@ def main():
     else:
         print(">>> Running Location-Free Mode (Classic All-vs-All)...")
         print("    Note: Cis-distance ignored. Treating all pairs as Trans.")
-        r.source(os.path.join(script_dir, "mxeqtl_noloc.R"))
+        r.source(get_r_script("mxeqtl_noloc.R"))
         
         # Determine strict output file/pval (Prefer Trans since logic is Trans)
         target_out = args.trans_output_file if args.trans_output_file else args.output_file
@@ -191,7 +212,12 @@ def main():
             output_file = target_out,
             p_value = target_pval,
             chunk_size = args.chunk_size,
-            no_fdr = args.no_fdr
+            no_fdr = args.no_fdr,
+            sep = args.sep,
+            missing = args.missing,
+            header = args.no_header,   # Note: argparse store_false means True by default if flag absent
+            rownames = args.no_rownames, 
+            model = args.model
         )
 
 if __name__ == '__main__':

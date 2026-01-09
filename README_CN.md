@@ -95,34 +95,65 @@ python3 src/matrix_eqtl/preprocessing/genotype.py \
 
 ### Step 4: 协变量生成 (Covariate Generation)
 
-运行 PCA (Genotype) 和 PEER (Expression) 生成协变量。
+(Updated) 为了提高稳定性和灵活性，此步骤现已拆分为三个子步骤。
 
-**命令**:
+#### Step 4a: 基因型 PCA (Genotype PCA)
+
+使用 PLINK 计算基因型主成分。
 
 ```bash
-python3 src/matrix_eqtl/preprocessing/covariates.py \
+python3 src/matrix_eqtl/preprocessing/genotype_pca.py \
     --genotype results/preprocessing/genotypes \
-    --expression results/preprocessing/expression.qnorm \
-    --known data/known_covariates.txt \
     --out-dir results/covariates \
     --pca-n 3 \
-    --peer-n 5 \
     --threads 4
 ```
 
-**参数详解**:
+#### Step 4b: 表达量 PEER 因子 (Expression PEER Factors)
 
-* `--known`: (可选) 已知协变量文件。
-* `--pca-n 3`: 基因型主成分数量 (由 PLINK 计算)。
-* `--peer-n 5`: 表达量 PEER 因子数量 (由 R `peer` 包计算)。
-* `--threads 4`: **(新增)** PLINK PCA 使用的线程数。
-* **注意**: 如果 `--genotype` 文件不存在，脚本会报错并列出目录内容以供调试。
+使用 R `peer` 包计算表达量隐藏因子（需安装 R `peer` 包）。
+
+```bash
+python3 src/matrix_eqtl/preprocessing/expression_peer.py \
+    --expression results/preprocessing/expression.qnorm \
+    --out-dir results/covariates \
+    --peer-n 5
+```
+
+#### Step 4c: 合并协变量 & 绘制相关性 (Combine & Plot)
+
+合并 PCA、PEER 和用户提供的已知协变量，并自动生成相关性热图 (`covariates_correlation.pdf`)。
+
+```bash
+python3 src/matrix_eqtl/preprocessing/combine_covariates.py \
+    --pca results/covariates/genotype_pcs.txt \
+    --peer results/covariates/peer_factors.tsv \
+    --known data/known_covariates.txt \
+    --out-dir results/covariates
+```
+
+* **--known**: (可选) 用户提供的协变量文件（支持 CSV/TSV，支持 Samples 在行或列，脚本会自动转置和清洗）。
+
+#### 工具: 独立绘制协变量相关性 (Utils: Plot Correlation)
+
+如果您想单独检查任意协变量文件的相关性（而不运行合并步骤），可以使用此独立脚本。
+
+```bash
+python3 src/matrix_eqtl/utils/plot_correlation.py \
+    --input results/covariates/final_covariates.txt \
+    --output results/covariates/custom_heatmap.pdf
+```
+
+* **--input**: 输入的协变量文件 (Tab分隔，Rows=Covariates, Cols=Samples)。
+* **--output**: (可选) 输出 PDF 路径。默认在输入文件同目录下生成 `_correlation.pdf`。
 
 ### Step 5: 执行 MatrixEQTL 分析 (Run Analysis)
 
-最后运行 MatrixEQTL 核心分析。
+最后运行 MatrixEQTL 核心分析。我们提供了两个便捷脚本：
 
-**命令**:
+#### 方式 A: 标准分析 (Cis + Trans)
+
+使用 `examples/run_cis_trans_analysis.sh` 或以下命令：
 
 ```bash
 python3 src/matrix_eqtl/analysis/run_matrix_eqtl.py \
@@ -133,13 +164,32 @@ python3 src/matrix_eqtl/analysis/run_matrix_eqtl.py \
     --genotype-positions results/preprocessing/snp_positions.txt \
     --output-file results/cis_results.txt \
     --cis-distance 1000000 \
-    --p-value 1e-5
+    --p-value 1e-5 \
+    --trans-output-file results/trans_results.txt \
+    --trans-p-value 1e-5 \
+    --no-fdr
+```
+
+#### 方式 B: 全两两分析 (All-Pairs / Location-Free)
+
+不依赖位置文件，计算所有 Gene-SNP 对的相关性。使用 `examples/run_all_pairs_analysis.sh` 或：
+
+```bash
+python3 src/matrix_eqtl/analysis/run_matrix_eqtl.py \
+    --genotype-matrix results/preprocessing/genotype.matrix \
+    --gene-expression-matrix results/preprocessing/expression.qnorm \
+    --covariates results/covariates/final_covariates.txt \
+    --output-file results/all_pairs_results.txt \
+    --p-value 1e-10 \
+    --no-fdr
 ```
 
 **参数详解**:
 
 * `--cis-distance`: Cis-eQTL 的窗口大小 (bp)，通常为 1000000 (1MB)。
 * `--p-value`: 输出结果的 P 值阈值。
+* `--trans-p-value`: Trans 结果阈值 (仅在标准模式下有效)。
+* `--no-fdr`: 跳过 FDR 计算以节省内存。
 
 ---
 
