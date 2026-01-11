@@ -14,6 +14,7 @@
 
 # --- Configuration (Edit these paths) ---
 export PROJ_DIR=$(pwd)
+export CODE_DIR="$PROJ_DIR"  # Path to the source code (src/)
 export OUTPUT_DIR="$PROJ_DIR/results_control"
 
 # Input Data
@@ -40,7 +41,7 @@ echo "--------------------------------------------------------------------------
 echo "[Step 0] Checking Location Files..."
 if [ ! -f "$OUTPUT_DIR/gene_locations.txt" ]; then
     echo "Generating gene locations..."
-    python3 src/matrix_eqtl/preprocessing/locations.py \
+    python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/locations.py" \
         --expression "$EXPRESSION_FILE" \
         --out "$OUTPUT_DIR/gene_locations.txt" \
         --format matrixeqtl \
@@ -54,7 +55,7 @@ fi
 # =============================================================================
 echo "-----------------------------------------------------------------------------"
 echo "[Step 1] Finding Common Samples..."
-python3 src/matrix_eqtl/utils/io.py \
+python3 "$CODE_DIR/src/matrix_eqtl/utils/io.py" \
     --vcf "$VCF_FILE" \
     --expression "$EXPRESSION_FILE" \
     --out "$OUTPUT_DIR/samples.txt"
@@ -64,7 +65,7 @@ python3 src/matrix_eqtl/utils/io.py \
 # =============================================================================
 echo "-----------------------------------------------------------------------------"
 echo "[Step 2] Processing Expression Data..."
-python3 src/matrix_eqtl/preprocessing/expression.py \
+python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/expression.py" \
     --expression "$EXPRESSION_FILE" \
     --samples "$OUTPUT_DIR/samples.txt" \
     --out-dir "$OUTPUT_DIR/preprocessing" \
@@ -78,7 +79,7 @@ python3 src/matrix_eqtl/preprocessing/expression.py \
 # =============================================================================
 echo "-----------------------------------------------------------------------------"
 echo "[Step 3] Processing Genotypes (PLINK QC)..."
-python3 src/matrix_eqtl/preprocessing/genotype.py \
+python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/genotype.py" \
     --vcf "$VCF_FILE" \
     --samples "$OUTPUT_DIR/samples.txt" \
     --out-dir "$OUTPUT_DIR/preprocessing" \
@@ -96,7 +97,7 @@ echo "[Step 4] Generating Covariates..."
 
 # 4a: Genotype PCA
 echo "  [4a] Running Genotype PCA..."
-python3 src/matrix_eqtl/preprocessing/genotype_pca.py \
+python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/genotype_pca.py" \
     --genotype "$OUTPUT_DIR/preprocessing/genotypes" \
     --out-dir "$OUTPUT_DIR/covariates" \
     --pca-n 3 \
@@ -105,14 +106,14 @@ python3 src/matrix_eqtl/preprocessing/genotype_pca.py \
 # 4b: Expression PEER
 echo "  [4b] Calculating PEER Factors..."
 # Check if R peer is available, otherwise skip or handle error
-python3 src/matrix_eqtl/preprocessing/expression_peer.py \
+python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/expression_peer.py" \
     --expression "$OUTPUT_DIR/preprocessing/expression.qnorm" \
     --out-dir "$OUTPUT_DIR/covariates" \
     --peer-n 5
 
 # 4c: Combine
 echo "  [4c] Combining Covariates..."
-python3 src/matrix_eqtl/preprocessing/combine_covariates.py \
+python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/combine_covariates.py" \
     --pca "$OUTPUT_DIR/covariates/genotype_pcs.txt" \
     --peer "$OUTPUT_DIR/covariates/peer_factors.tsv" \
     --known "$KNOWN_COV_FILE" \
@@ -135,7 +136,7 @@ echo "[Step 5a] Running Standard Cis + Trans Analysis..."
 # Cis distance is set by --cis-distance.
 # Trans results are enabled by setting --trans-p-value > 0.
 
-python3 src/matrix_eqtl/analysis/run_matrix_eqtl.py \
+python3 "$CODE_DIR/src/matrix_eqtl/analysis/run_matrix_eqtl.py" \
     --genotype-matrix "$OUTPUT_DIR/preprocessing/genotype.matrix" \
     --gene-expression-matrix "$OUTPUT_DIR/preprocessing/expression.qnorm" \
     --covariates "$OUTPUT_DIR/covariates/final_covariates.txt" \
@@ -161,7 +162,7 @@ echo "  >> Trans Results: $OUTPUT_DIR/trans_results.txt"
 # echo "-----------------------------------------------------------------------------"
 # echo "[Step 5b] Running All-Pairs Analysis (Location-Free)..."
 #
-# python3 src/matrix_eqtl/analysis/run_matrix_eqtl.py \
+# python3 "$CODE_DIR/src/matrix_eqtl/analysis/run_matrix_eqtl.py" \
 #     --genotype-matrix "$OUTPUT_DIR/preprocessing/genotype.matrix" \
 #     --gene-expression-matrix "$OUTPUT_DIR/preprocessing/expression.qnorm" \
 #     --covariates "$OUTPUT_DIR/covariates/final_covariates.txt" \

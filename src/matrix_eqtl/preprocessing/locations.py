@@ -29,7 +29,7 @@ def get_args():
     
     # Settings
     parser.add_argument('--id-type', default='ensembl_gene_id', 
-                        help='ID type for fetching/GTF: ensembl_gene_id, external_gene_name, entrezgene_id, uniprot_gn_id')
+                        help='ID type(s) for fetching/GTF, comma separated. E.g., "external_gene_name,ensembl_gene_id"')
     
     # Output Control
     parser.add_argument('--out', required=True, help='Output filename prefix or full path')
@@ -76,7 +76,7 @@ def check_vcf_chr_format(vcf_file):
 
 def parse_gtf(gtf_file, target_ids, id_type):
     """Parse GTF for coordinates."""
-    print(f"Parsing GTF: {gtf_file}...")
+    print(f"Parsing GTF: {gtf_file} using ID type: {id_type}...")
     attr_map = {
         'ensembl_gene_id': 'gene_id',
         'external_gene_name': 'gene_name',
@@ -206,28 +206,55 @@ def main():
     expr.rename(columns={expr.columns[0]: 'geneid'}, inplace=True)
     expr['geneid'] = expr['geneid'].astype(str)
     
-    ids = expr['geneid'].tolist()
+    all_ids = expr['geneid'].tolist()
+    missing_ids = set(all_ids)
     
-    # 2. Get Positions
-    pos_df = pd.DataFrame()
+    # 2. Get Positions (Revised for Multi-Type)
+    final_pos_dfs = []
+    
+    # Handle id types
+    id_types = [t.strip() for t in args.id_type.split(',')]
     
     if args.dummy_pos:
         print("Generating dummy positions...")
-        starts = [1000 + i*1000 for i in range(len(ids))]
+        starts = [1000 + i*1000 for i in range(len(all_ids))]
         pos_df = pd.DataFrame({
-            'geneid': ids,
-            'chr': [args.dummy_chr]*len(ids),
+            'geneid': all_ids,
+            'chr': [args.dummy_chr]*len(all_ids),
             'left': starts,
             'right': [s+100 for s in starts],
-            'strand': ['.']*len(ids)
+            'strand': ['.']*len(all_ids)
         })
-    elif args.fetch_pos:
-        pos_df = fetch_biomart_positions(ids, args.id_type)
-    elif args.gtf:
-        if not os.path.exists(args.gtf):
-             print(f"Error: GTF not found: {args.gtf}")
-             sys.exit(1)
-        pos_df = parse_gtf(args.gtf, ids, args.id_type)
+        final_pos_dfs.append(pos_df)
+        
+    elif args.fetch_pos or args.gtf:
+        
+        for id_t in id_types:
+            if not missing_ids:
+                break
+            
+            print(f"--- Searching for {len(missing_ids)} IDs using type: {id_t} ---")
+            current_target_ids = list(missing_ids)
+            
+            found_df = pd.DataFrame()
+            if args.fetch_pos:
+                found_df = fetch_biomart_positions(current_target_ids, id_t)
+            elif args.gtf:
+                if not os.path.exists(args.gtf):
+                     print(f"Error: GTF not found: {args.gtf}")
+                     sys.exit(1)
+                found_df = parse_gtf(args.gtf, current_target_ids, id_t)
+            
+            if not found_df.empty:
+                print(f"  Found {len(found_df)} matches.")
+                final_pos_dfs.append(found_df)
+                
+                # Identify which IDs were found
+                found_ids = set(found_df['geneid'].astype(str).tolist())
+                missing_ids = missing_ids - found_ids
+            else:
+                print("  No matches found with this type.")
+                
     elif args.positions:
         print(f"Reading positions file: {args.positions}")
         pos_df = pd.read_csv(args.positions, sep='\t')
@@ -238,15 +265,17 @@ def main():
         if 'end' in pos_df.columns: pos_df.rename(columns={'end': 'right'}, inplace=True)
         if 's1' in pos_df.columns: pos_df.rename(columns={'s1': 'left'}, inplace=True)
         if 's2' in pos_df.columns: pos_df.rename(columns={'s2': 'right'}, inplace=True)
+        final_pos_dfs.append(pos_df)
     else:
         print("Error: No position source specified.")
         sys.exit(1)
         
-    if pos_df.empty:
+    # Combine results
+    if not final_pos_dfs:
         print("Error: No positions found/matched.")
         sys.exit(1)
         
-    # Standardize Pos DF
+    pos_df = pd.concat(final_pos_dfs).drop_duplicates(subset=['geneid'])
     pos_df['geneid'] = pos_df['geneid'].astype(str)
     if 'strand' not in pos_df.columns: pos_df['strand'] = '.'
     

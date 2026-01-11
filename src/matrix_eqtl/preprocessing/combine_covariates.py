@@ -118,6 +118,9 @@ def combine_and_plot(pca_file, peer_file, known_file, out_dir):
     print(f"Samples: {final_df.shape[1]}, Covariates: {final_df.shape[0]}")
     
     # Save Combined
+    # Ensure index has a name so to_csv writes a header for it (Crucial for QTLtools)
+    final_df.index.name = 'id'
+    
     out_file = out_dir / "final_covariates.txt"
     final_df.to_csv(out_file, sep='\t')
     print(f"Saved combined covariates to: {out_file}")
