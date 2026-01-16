@@ -3,9 +3,10 @@ import subprocess
 from pathlib import Path
 import os
 
-def process_genotype(vcf_file, samples, output_dir, target_tool, maf="0.01", geno="0.05", hwe="1e-6", threads=1):
+def process_genotype(vcf_file, samples, output_dir, target_tool, maf="0.01", geno="0.05", hwe="1e-6", threads=1, plink_bin="plink2", plink_version=2):
     """
     Process VCF using PLINK to generate required format.
+    plink_version: 1 (for v1.9) or 2 (for v2.0)
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -19,41 +20,95 @@ def process_genotype(vcf_file, samples, output_dir, target_tool, maf="0.01", gen
     # PLINK output prefix
     plink_out = output_dir / "genotypes"
     
-    # Run PLINK: Filter samples, make bed
-    cmd = [
-        "plink",
-        "--vcf", str(vcf_file),
-        "--keep", str(keep_file),
-        "--make-bed",
-        "--out", str(plink_out),
-        "--maf", str(maf),
-        "--geno", str(geno),
-        "--hwe", str(hwe),
-        "--threads", str(threads)
-    ]
-    # Add --const-fid if VCF only has IID? Assuming standard VCF.
-    # Often VCF sample IDs are treated as IID, FID=0 or FID=IID. 
-    # Let's assume standard behavior first.
+    # PLINK output prefix
+    plink_out = output_dir / "genotypes"
     
-    print(f"Running PLINK QC: {' '.join(cmd)}")
-    subprocess.check_call(cmd)
+    # Run PLINK QC
+    if plink_version == 2:
+        # PLINK 2 cannot --make-bed --sort-vars directly.
+        # It requires: VCF -> Sorted PGEN -> BED.
+        
+        # Step 1: VCF -> Sorted PGEN
+        temp_pgen_prefix = output_dir / "temp_sorted"
+        cmd_step1 = [
+            plink_bin,
+            "--vcf", str(vcf_file),
+            "--keep", str(keep_file),
+            "--make-pgen",
+            "--sort-vars",
+            "--out", str(temp_pgen_prefix),
+            "--maf", str(maf),
+            "--geno", str(geno),
+            "--hwe", str(hwe),
+            "--threads", str(threads),
+            "--double-id",
+            "--allow-extra-chr"
+        ]
+        print(f"Running PLINK 2 Step 1 (Sort & QC): {' '.join(cmd_step1)}")
+        subprocess.check_call(cmd_step1)
+        
+        # Step 2: Sorted PGEN -> BED (Fixed-width)
+        cmd_step2 = [
+            plink_bin,
+            "--pfile", str(temp_pgen_prefix),
+            "--make-bed",
+            "--out", str(plink_out),
+            "--threads", str(threads)
+        ]
+        print(f"Running PLINK 2 Step 2 (PGEN -> BED): {' '.join(cmd_step2)}")
+        subprocess.check_call(cmd_step2)
+        
+        # Clean up temp PGEN files
+        for ext in ['.pgen', '.pvar', '.psam', '.log']:
+            f_rem = Path(str(temp_pgen_prefix) + ext)
+            if f_rem.exists():
+                f_rem.unlink()
+                
+    else:
+        # PLINK 1.9 Workflow (Direct)
+        cmd = [
+            plink_bin,
+            "--vcf", str(vcf_file),
+            "--keep", str(keep_file),
+            "--make-bed",
+            "--out", str(plink_out),
+            "--maf", str(maf),
+            "--geno", str(geno),
+            "--hwe", str(hwe),
+            "--threads", str(threads),
+            "--double-id",
+            "--allow-extra-chr",
+            "--allow-no-sex"
+        ]
+        print(f"Running PLINK QC (v{plink_version}): {' '.join(cmd)}")
+        subprocess.check_call(cmd)
     
     result = {
         'plink_prefix': str(plink_out)
     }
     
     if target_tool == 'matrixeqtl':
-        # Use --recode A-transpose to get SNPs in rows (Variant-major)
-        # This avoids loading a massive (Samples x SNPs) matrix into pandas to transpose it.
+        # Use --export A-transpose (PLINK 2 syntax)
         # Output format is .traw
-        # Use a distinct prefix for export to avoid any potential conflict/overwrite of the main BED
         export_prefix = output_dir / "genotypes_export"
-        cmd_recode = [
-            "plink", "--bfile", str(plink_out), 
-            "--recode", "A-transpose", 
-            "--out", str(export_prefix)
-        ]
-        print(f"Running PLINK Recode (Transpose): {' '.join(cmd_recode)}")
+        cmd_recode = []
+        
+        if plink_version == 2:
+            # Use --export A-transpose (PLINK 2 syntax)
+            cmd_recode = [
+                plink_bin, "--bfile", str(plink_out), 
+                "--export", "A-transpose", 
+                "--out", str(export_prefix)
+            ]
+        else:
+            # Use --recode A-transpose (PLINK 1.9 syntax)
+            cmd_recode = [
+                plink_bin, "--bfile", str(plink_out), 
+                "--recode", "A-transpose", 
+                "--out", str(export_prefix)
+            ]
+            
+        print(f"Running PLINK 2 Export (Transpose): {' '.join(cmd_recode)}")
         subprocess.check_call(cmd_recode)
         
         traw_file = str(export_prefix) + ".traw"
@@ -123,18 +178,40 @@ def process_genotype(vcf_file, samples, output_dir, target_tool, maf="0.01", gen
 
     elif target_tool == 'qtltools':
         # QTLtools needs VCF.
-        # It's already VCF, but might need to be subsetted/re-ordered.
-        # Use PLINK to export VCF with filtered samples/SNPs
+        # Use PLINK 2 to export VCF with filtered samples/SNPs
         vcf_out = output_dir / "genotypes.filtered.vcf.gz"
-        cmd_vcf = [
-            "plink", "--bfile", str(plink_out), 
-            "--recode", "vcf-iid", "bgz", 
-            "--out", str(output_dir / "genotypes.filtered")
-        ]
+        cmd_vcf = []
+        
+        if plink_version == 2:
+            # Use --export vcf bgz (PLINK 2 syntax)
+            # Add id-paste=iid to prevent PLINK from munging IDs (e.g. FID_IID)
+            # This ensures VCF IDs match the input sample list exactly
+            cmd_vcf = [
+                plink_bin, "--bfile", str(plink_out), 
+                "--export", "vcf", "bgz", "id-paste=iid", 
+                "--out", str(output_dir / "genotypes.filtered")
+            ]
+        else:
+            # Use --recode vcf-iid bgz (PLINK 1.9 syntax)
+            cmd_vcf = [
+                plink_bin, "--bfile", str(plink_out), 
+                "--recode", "vcf-iid", "bgz", 
+                "--out", str(output_dir / "genotypes.filtered")
+            ]
+            
         subprocess.check_call(cmd_vcf)
         
+        # Output handling
+        # plink2 --export vcf bgz -> .vcf.gz
+        # plink1 --recode vcf-iid bgz -> .vcf.gz (usually)
+        # Check generated file
+        generated = output_dir / "genotypes.filtered.vcf.gz"
+        if not generated.exists():
+             # Try without gz extension if plink1 behavior differs or find what it made
+             pass
+
         # Rename output
-        os.rename(str(output_dir / "genotypes.filtered.vcf.gz"), str(vcf_out))
+        os.rename(str(generated), str(vcf_out))
         # Index it
         subprocess.check_call(["tabix", "-p", "vcf", str(vcf_out)])
         
@@ -157,6 +234,10 @@ def main():
     parser.add_argument("--threads", type=int, default=1, help="Number of threads for PLINK")
     # Optional strict args?
     
+    # PLINK Version Control
+    parser.add_argument("--plink-bin", default="plink2", help="Path or name of PLINK executable (default: plink2)")
+    parser.add_argument("--plink-version", type=int, default=2, choices=[1, 2], help="PLINK version: 1 for v1.9, 2 for v2.0 (default: 2)")
+    
     args = parser.parse_args()
     
     # Read samples
@@ -164,7 +245,8 @@ def main():
         samples = [line.strip() for line in f if line.strip()]
         
     process_genotype(args.vcf, samples, args.out_dir, args.tool, 
-                     maf=args.maf, geno=args.geno, hwe=args.hwe, threads=args.threads)
+                     maf=args.maf, geno=args.geno, hwe=args.hwe, threads=args.threads,
+                     plink_bin=args.plink_bin, plink_version=args.plink_version)
 
 if __name__ == "__main__":
     main()

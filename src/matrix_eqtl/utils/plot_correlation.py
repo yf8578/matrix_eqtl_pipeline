@@ -6,7 +6,7 @@ from pathlib import Path
 import os
 import sys
 
-def plot_correlation(input_file, output_prefix=None):
+def plot_correlation(input_file, output_prefix=None, annot=True):
     """
     Plots the correlation heatmap for a MatrixEQTL Covariates file.
     Input format: Rows=Covariates, Cols=Samples (Tab-separated)
@@ -54,15 +54,24 @@ def plot_correlation(input_file, output_prefix=None):
     print(f"Saved Correlation Matrix to: {matrix_out_path}")
     
     # 3. Plot
-    plt.figure(figsize=(12, 10))
+    # Dynamic figsize based on number of variables
+    n_vars = len(corr_matrix.columns)
+    # Estimate size: at least 10x10, but grow with n_vars
+    # e.g., 0.3 inch per variable
+    plot_size = max(12, n_vars * 0.3)
+    
+    plt.figure(figsize=(plot_size, plot_size * 0.8))
+    
     sns.heatmap(corr_matrix, 
-                annot=True,       # Show numbers
+                annot=annot,      # Controlled by flag
                 fmt=".2f",        # 2 decimal places
                 cmap='RdBu_r',    # Red=Pos, Blue=Neg
                 center=0, 
                 square=True,
-                linewidths=.5,
-                cbar_kws={"shrink": .8})
+                linewidths=.5 if n_vars < 50 else 0, # Remove grid lines if too dense
+                cbar_kws={"shrink": .8},
+                xticklabels=True, # Force showing all labels
+                yticklabels=True) # Force showing all labels
     
     plt.title(f"Covariate Correlation\n({input_path.name})")
     plt.tight_layout()
@@ -80,10 +89,12 @@ def main():
     parser = argparse.ArgumentParser(description="Plot Covariate Correlation Heatmap")
     parser.add_argument("input_file", help="Path to covariates file (Rows=Covariates, Cols=Samples)")
     parser.add_argument("--out", help="Output PDF file path (optional)")
+    parser.add_argument("--no-annot", action='store_true', help="Do not show correlation values on the heatmap")
     
     args = parser.parse_args()
     
-    plot_correlation(args.input_file, args.out)
+    # If --no-annot is provided, annot should be False
+    plot_correlation(args.input_file, args.out, annot=(not args.no_annot))
 
 if __name__ == "__main__":
     main()

@@ -6,10 +6,12 @@ import subprocess
 import requests
 import io
 
+import shutil
+
 def check_dependencies():
     """Check if bgzip and tabix are available (only needed for QTLtools format)."""
     for cmd in ['bgzip', 'tabix']:
-        if subprocess.call(['which', cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) != 0:
+        if shutil.which(cmd) is None:
             print(f"Warning: {cmd} is not found in PATH. BED file will not be compressed/indexed.")
             return False
     return True

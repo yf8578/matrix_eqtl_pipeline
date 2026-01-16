@@ -25,6 +25,8 @@ QTLTOOLS_BIN="QTLtools"  # Path to QTLtools binary
 
 # Parameters
 THREADS=4
+PLINK_BIN="plink2"   # Or "plink" for v1.9
+PLINK_VERSION=2      # 1 or 2
 
 echo ">>> Project Dir: $PROJ_DIR"
 echo ">>> Output Dir:  $OUTPUT_DIR"
@@ -74,7 +76,9 @@ python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/genotype.py" \
     --maf 0.05 \
     --geno 0.05 \
     --hwe 1e-6 \
-    --threads "$THREADS"
+    --threads "$THREADS" \
+    --plink-bin "$PLINK_BIN" \
+    --plink-version "$PLINK_VERSION"
     # Output: genotypes.filtered.vcf.gz
 
 # =============================================================================
@@ -88,7 +92,9 @@ python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/genotype_pca.py" \
     --genotype "$OUTPUT_DIR/preprocessing/genotypes" \
     --out-dir "$OUTPUT_DIR/covariates" \
     --pca-n 3 \
-    --threads "$THREADS"
+    --threads "$THREADS" \
+    --plink-bin "$PLINK_BIN" \
+    --plink-version "$PLINK_VERSION"
 
 # 4b: PEER Factors (Same logic)
 python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/expression_peer.py" \

@@ -25,6 +25,8 @@ KNOWN_COV_FILE="/data/work/new_QTL/output/step2_covariates/20260107_sample_info_
 
 # Parameters
 THREADS=4
+PLINK_BIN="plink2"   # Or "plink" for v1.9
+PLINK_VERSION=2      # 1 or 2
 CIS_DIST=1000000     # 1MB
 CIS_PVAL=1e-5
 TRANS_PVAL=1e-5      # Set >0 to output trans results. If 0, no trans output.
@@ -87,7 +89,9 @@ python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/genotype.py" \
     --maf 0.05 \
     --geno 0.05 \
     --hwe 1e-6 \
-    --threads "$THREADS"
+    --threads "$THREADS" \
+    --plink-bin "$PLINK_BIN" \
+    --plink-version "$PLINK_VERSION"
 
 # =============================================================================
 # Step 4: Covariate Generation (Split Steps)
@@ -101,7 +105,9 @@ python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/genotype_pca.py" \
     --genotype "$OUTPUT_DIR/preprocessing/genotypes" \
     --out-dir "$OUTPUT_DIR/covariates" \
     --pca-n 3 \
-    --threads "$THREADS"
+    --threads "$THREADS" \
+    --plink-bin "$PLINK_BIN" \
+    --plink-version "$PLINK_VERSION"
 
 # 4b: Expression PEER
 echo "  [4b] Calculating PEER Factors..."
@@ -117,7 +123,8 @@ python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/combine_covariates.py" \
     --pca "$OUTPUT_DIR/covariates/genotype_pcs.txt" \
     --peer "$OUTPUT_DIR/covariates/peer_factors.tsv" \
     --known "$KNOWN_COV_FILE" \
-    --out-dir "$OUTPUT_DIR/covariates"
+    --out-dir "$OUTPUT_DIR/covariates" \
+    --no-annot
 
 # Check correlation plot
 if [ -f "$OUTPUT_DIR/covariates/covariates_correlation.pdf" ]; then

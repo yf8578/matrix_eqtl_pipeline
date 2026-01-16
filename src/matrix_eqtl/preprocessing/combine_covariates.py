@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 import os
 
-def combine_and_plot(pca_file, peer_file, known_file, out_dir):
+def combine_and_plot(pca_file, peer_file, known_file, out_dir, annot=True):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     
@@ -135,8 +135,23 @@ def combine_and_plot(pca_file, peer_file, known_file, out_dir):
     
     # Plotting
     try:
-        plt.figure(figsize=(12, 10))
-        sns.heatmap(corr_matrix, annot=False, cmap='RdBu_r', center=0, square=True)
+        # Dynamic figsize based on number of variables
+        n_vars = len(corr_matrix.columns)
+        # Estimate size: at least 10x10, but grow with n_vars
+        plot_size = max(12, n_vars * 0.3)
+        
+        plt.figure(figsize=(plot_size, plot_size * 0.8))
+        sns.heatmap(corr_matrix, 
+                    annot=annot, 
+                    cmap='RdBu_r', 
+                    center=0, 
+                    square=True,
+                    fmt=".2f",
+                    linewidths=.5 if n_vars < 50 else 0,
+                    cbar_kws={"shrink": .8},
+                    xticklabels=True, # Force showing all labels
+                    yticklabels=True) # Force showing all labels
+                    
         plt.title("Covariate Correlation Matrix")
         plt.tight_layout()
         
@@ -153,10 +168,11 @@ def main():
     parser.add_argument("--peer", help="PEER Factors file")
     parser.add_argument("--known", help="Known Covariates file")
     parser.add_argument("--out-dir", required=True, help="Output directory")
+    parser.add_argument("--no-annot", action='store_true', help="Do not show correlation values on the heatmap")
     
     args = parser.parse_args()
     
-    combine_and_plot(args.pca, args.peer, args.known, args.out_dir)
+    combine_and_plot(args.pca, args.peer, args.known, args.out_dir, annot=(not args.no_annot))
 
 if __name__ == "__main__":
     main()
