@@ -1,6 +1,7 @@
 # MatrixEQTL 统一分析流程 (Unified MatrixEQTL Pipeline)
 
 > [English Version (英文版)](README.md)
+> [Example Analysis Script (示例分析脚本)](examples/run_on_server_matrixeqtl.sh)
 
 这是一个整合了 **MatrixEQTL**、**QTLtools** 和 **TensorQTL** 的统一 eQTL 分析流程。本文档重点介绍 **MatrixEQTL** 的详细手动分析步骤。
 
@@ -82,7 +83,9 @@ python3 src/matrix_eqtl/preprocessing/genotype.py \
     --maf 0.01 \
     --geno 0.05 \
     --hwe 1e-6 \
-    --threads 4
+    --threads 4 \
+    --plink-bin plink2 \
+    --plink-version 2
 ```
 
 **参数详解**:
@@ -91,6 +94,8 @@ python3 src/matrix_eqtl/preprocessing/genotype.py \
 * `--geno 0.05`: SNP 缺失率阈值。
 * `--hwe 1e-6`: 哈代-温伯格平衡 p 值阈值。
 * `--threads 4`: **(新增)** PLINK 使用的线程数，加速 QC 和转码步骤。
+* `--plink-bin plink2`: **(新增)** 指定 PLINK 可执行文件名称 (例如 `plink` 或 `plink2`)。
+* `--plink-version 2`: **(新增)** 指定 PLINK 版本 (1 或 2，推荐使用 2 以获得更好性能)。
 * 此步骤会自动生成 `genotype.matrix` (转置后的剂量矩阵) 和 `snp_positions.txt`。
 
 ### Step 4: 协变量生成 (Covariate Generation)
@@ -106,7 +111,9 @@ python3 src/matrix_eqtl/preprocessing/genotype_pca.py \
     --genotype results/preprocessing/genotypes \
     --out-dir results/covariates \
     --pca-n 3 \
-    --threads 4
+    --threads 4 \
+    --plink-bin plink2 \
+    --plink-version 2
 ```
 
 #### Step 4b: 表达量 PEER 因子 (Expression PEER Factors)
@@ -129,10 +136,12 @@ python3 src/matrix_eqtl/preprocessing/combine_covariates.py \
     --pca results/covariates/genotype_pcs.txt \
     --peer results/covariates/peer_factors.tsv \
     --known data/known_covariates.txt \
-    --out-dir results/covariates
+    --out-dir results/covariates \
+    --no-annot
 ```
 
 * **--known**: (可选) 用户提供的协变量文件（支持 CSV/TSV，支持 Samples 在行或列，脚本会自动转置和清洗）。
+* **--no-annot**: (NEW) 跳过对协变量的注释（如果不加此参数，脚本可能会尝试解析协变量名称）。
 
 #### 工具: 独立绘制协变量相关性 (Utils: Plot Correlation)
 
@@ -193,8 +202,6 @@ python3 src/matrix_eqtl/analysis/run_matrix_eqtl.py \
 
 ---
 
-## 🛠️ 其他工具用法 (QTLtools & TensorQTL)
-
 ## 🔍 进阶分析与参数说明 (Advanced Analysis)
 
 ### 1. Cis 与 Trans 单独阈值控制
@@ -206,7 +213,7 @@ MatrixEQTL 支持同时分析 Cis 和 Trans eQTL，并设置不同的 P 值阈�
 * `--trans-p-value`: **TRANS** 分析的 P 值阈值 (默认为 0，即不保留 Trans 结果)。
 * `--trans-output-file`: Trans 结果的输出文件路径。
 
-**示例：同时保留 Cis (1e-5) 和 Trans (1e-8) 结果**
+#### 示例：同时保留 Cis (1e-5) 和 Trans (1e-8) 结果
 
 ```bash
 python3 src/matrix_eqtl/analysis/run_matrix_eqtl.py \
