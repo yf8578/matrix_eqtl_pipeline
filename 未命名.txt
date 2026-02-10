@@ -1,0 +1,407 @@
+
+# --- Configuration (Edit these paths) ---
+export PROJ_DIR='/data/work/example/pQTL'
+export CODE_DIR="/data/work/example/matrix_eqtl_pipeline/"  # Path to the source code (src/)
+export OUTPUT_DIR="$PROJ_DIR/results_control"
+
+# Input Data
+VCF_FILE="/data/work/example/pQTL/input/genotypes.vcf.gz"
+EXPRESSION_FILE="/data/work/example/pQTL/input/expression.tsv"
+# GTF_FILE="/data/work/Ref/gencode.v46.annotation.gtf" # Optional if using fetch-pos
+KNOWN_COV_FILE="/data/work/example/pQTL/input/covariates.csv"
+
+
+echo "-----------------------------------------------------------------------------"
+echo "[Step 0] Checking Location Files..."
+if [ ! -f "$OUTPUT_DIR/gene_locations.txt" ]; then
+    echo "Generating gene locations..."
+    python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/locations.py" \
+        --expression "$EXPRESSION_FILE" \
+        --out "$OUTPUT_DIR/gene_locations.txt" \
+        --format matrixeqtl \
+        --fetch-pos --id-type "uniprot_gn_id"
+else
+    echo "Gene locations already exist at $OUTPUT_DIR/gene_locations.txt"
+fi
+-----------------------------------------------------------------------------
+[Step 0] Checking Location Files...
+Generating gene locations...
+Reading Expression: /data/work/example/pQTL/input/expression.tsv
+--- Searching for 7696 IDs using type: uniprot_gn_id ---
+Querying BioMart for 7696 IDs (uniprot_gn_id)...
+  Found 7547 matches.
+Merging features...
+  Matched 7547 features.
+Writing MatrixEQTL Position file to: /data/work/example/pQTL/results_control/gene_locations.txt
+Done.
+
+# =============================================================================
+# Step 1: Sample Intersection
+# =============================================================================
+echo "-----------------------------------------------------------------------------"
+echo "[Step 1] Finding Common Samples..."
+python3 "$CODE_DIR/src/matrix_eqtl/utils/io.py" \
+    --vcf "$VCF_FILE" \
+    --expression "$EXPRESSION_FILE" \
+    --out "$OUTPUT_DIR/samples.txt"
+-----------------------------------------------------------------------------
+[Step 1] Finding Common Samples...
+Found 49 common samples.
+
+
+# =============================================================================
+# Step 2: Expression Processing
+# =============================================================================
+echo "-----------------------------------------------------------------------------"
+echo "[Step 2] Processing Expression Data..."
+python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/expression.py" \
+    --expression "$EXPRESSION_FILE" \
+    --samples "$OUTPUT_DIR/samples.txt" \
+    --out-dir "$OUTPUT_DIR/preprocessing" \
+    --no-tpm-filter \
+    --max-missing 0.2 \
+    # --no-norm
+    # Remove --no-norm if you want Inverse Normal Transformation (INT)
+-----------------------------------------------------------------------------
+[Step 2] Processing Expression Data...
+Skipping low expression value filter (User requested).
+Missing Filter (NaN <= 20.0%): 7696 -> 7696 genes.
+
+R443) stereonote@task-p24z10200n0979-ossntzu8-97f4bcb9d-sbswf:/data/work/example/pQTL$ python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/genotype.py"     --vcf "$VCF_FILE"     --samples "$OUTPUT_DIR/samples.txt"     --out-dir "$OUTPUT_DIR/preprocessing"     --tool matrixeqtl     --maf 0.05     --geno 0.05     --hwe 1e-6     --threads 20     --plink-bin "plink2"     --plink-version 2
+Running PLINK 2 Step 1 (Sort & QC): plink2 --vcf /data/work/example/pQTL/input/genotypes.vcf.gz --keep /data/work/example/pQTL/results_control/preprocessing/keep_samples.txt --make-pgen --sort-vars --out /data/work/example/pQTL/results_control/preprocessing/temp_sorted --maf 0.05 --geno 0.05 --hwe 1e-6 --threads 20 --double-id --allow-extra-chr
+PLINK v2.00a2.3LM 64-bit Intel (24 Jan 2020)   www.cog-genomics.org/plink/2.0/
+(C) 2005-2020 Shaun Purcell, Christopher Chang   GNU General Public License v3
+Logging to /data/work/example/pQTL/results_control/preprocessing/temp_sorted.log.
+Options in effect:
+  --allow-extra-chr
+  --double-id
+  --geno 0.05
+  --hwe 1e-6
+  --keep /data/work/example/pQTL/results_control/preprocessing/keep_samples.txt
+  --maf 0.05
+  --make-pgen
+  --out /data/work/example/pQTL/results_control/preprocessing/temp_sorted
+  --sort-vars
+  --threads 20
+  --vcf /data/work/example/pQTL/input/genotypes.vcf.gz
+
+Start time: Tue Feb 10 20:00:49 2026
+385581 MiB RAM detected; reserving 192790 MiB for main workspace.
+Using up to 20 threads (change this with --threads).
+--vcf: 17449136 variants scanned.
+--vcf: 17432k variants converted. 
+/data/work/example/pQTL/results_control/preprocessing/temp_sorted-temporary.pgen
++
+/data/work/example/pQTL/results_control/preprocessing/temp_sorted-temporary.pvar
++
+/data/work/example/pQTL/results_control/preprocessing/temp_sorted-temporary.psam
+written.
+49 samples (0 females, 0 males, 49 ambiguous; 49 founders) loaded from
+/data/work/example/pQTL/results_control/preprocessing/temp_sorted-temporary.psam.
+17449136 variants loaded from
+/data/work/example/pQTL/results_control/preprocessing/temp_sorted-temporary.pvar.
+Note: No phenotype data present.
+--keep: 49 samples remaining.
+49 samples (0 females, 0 males, 49 ambiguous; 49 founders) remaining after main
+filters.
+Calculating allele frequencies... done.
+--geno: 823410 variants removed due to missing genotype data.
+--hwe: 32 variants removed due to Hardy-Weinberg exact test (founders only).
+10863771 variants removed due to allele frequency threshold(s)
+(--maf/--max-maf/--mac/--max-mac).
+5761923 variants remaining after main filters.
+Writing /data/work/example/pQTL/results_control/preprocessing/temp_sorted.pvar
+... done.
+Writing /data/work/example/pQTL/results_control/preprocessing/temp_sorted.psam
+... done.
+Writing /data/work/example/pQTL/results_control/preprocessing/temp_sorted.pgen
+... done.
+End time: Tue Feb 10 20:03:58 2026
+Running PLINK 2 Step 2 (PGEN -> BED): plink2 --pfile /data/work/example/pQTL/results_control/preprocessing/temp_sorted --make-bed --out /data/work/example/pQTL/results_control/preprocessing/genotypes --threads 20
+PLINK v2.00a2.3LM 64-bit Intel (24 Jan 2020)   www.cog-genomics.org/plink/2.0/
+(C) 2005-2020 Shaun Purcell, Christopher Chang   GNU General Public License v3
+Logging to /data/work/example/pQTL/results_control/preprocessing/genotypes.log.
+Options in effect:
+  --make-bed
+  --out /data/work/example/pQTL/results_control/preprocessing/genotypes
+  --pfile /data/work/example/pQTL/results_control/preprocessing/temp_sorted
+  --threads 20
+
+Start time: Tue Feb 10 20:03:59 2026
+385581 MiB RAM detected; reserving 192790 MiB for main workspace.
+Using up to 20 threads (change this with --threads).
+49 samples (0 females, 0 males, 49 ambiguous; 49 founders) loaded from
+/data/work/example/pQTL/results_control/preprocessing/temp_sorted.psam.
+5761923 variants loaded from
+/data/work/example/pQTL/results_control/preprocessing/temp_sorted.pvar.
+Note: No phenotype data present.
+Writing /data/work/example/pQTL/results_control/preprocessing/genotypes.fam ...
+done.
+Writing /data/work/example/pQTL/results_control/preprocessing/genotypes.bim ...
+done.
+Writing /data/work/example/pQTL/results_control/preprocessing/genotypes.bed ...
+done.
+End time: Tue Feb 10 20:04:03 2026
+Running PLINK 2 Export (Transpose): plink2 --bfile /data/work/example/pQTL/results_control/preprocessing/genotypes --export A-transpose --out /data/work/example/pQTL/results_control/preprocessing/genotypes_export
+PLINK v2.00a2.3LM 64-bit Intel (24 Jan 2020)   www.cog-genomics.org/plink/2.0/
+(C) 2005-2020 Shaun Purcell, Christopher Chang   GNU General Public License v3
+Logging to /data/work/example/pQTL/results_control/preprocessing/genotypes_export.log.
+Options in effect:
+  --bfile /data/work/example/pQTL/results_control/preprocessing/genotypes
+  --export A-transpose
+  --out /data/work/example/pQTL/results_control/preprocessing/genotypes_export
+
+Start time: Tue Feb 10 20:04:03 2026
+385581 MiB RAM detected; reserving 192790 MiB for main workspace.
+Using up to 96 threads (change this with --threads).
+49 samples (0 females, 0 males, 49 ambiguous; 49 founders) loaded from
+/data/work/example/pQTL/results_control/preprocessing/genotypes.fam.
+5761923 variants loaded from
+/data/work/example/pQTL/results_control/preprocessing/genotypes.bim.
+Note: No phenotype data present.
+--export A-transpose to
+/data/work/example/pQTL/results_control/preprocessing/genotypes_export.traw ...
+done.
+End time: Tue Feb 10 20:04:06 2026
+Formatting genotype matrix (chunked processing)...
+
+ # =============================================================================
+# Step 4: Covariate Generation (Split Steps)
+# =============================================================================
+echo "-----------------------------------------------------------------------------"
+echo "[Step 4] Generating Covariates..."
+
+# 4a: Genotype PCA
+echo "  [4a] Running Genotype PCA..."
+python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/genotype_pca.py" \
+    --genotype "$OUTPUT_DIR/preprocessing/genotypes" \
+    --out-dir "$OUTPUT_DIR/covariates" \
+    --pca-n 5 \
+    --threads "$THREADS" \
+    --plink-bin "$PLINK_BIN" \
+    --plink-version "$PLINK_VERSION"
+-----------------------------------------------------------------------------
+[Step 4] Generating Covariates...
+  [4a] Running Genotype PCA...
+DEBUG: Python CWD: /data/work/example/pQTL
+Running PLINK PCA (plink2 v2): plink2 --bfile /data/work/example/pQTL/results_control/preprocessing/genotypes --pca 5 --out /data/work/example/pQTL/results_control/covariates/genotype_pca --threads 4 --bad-freqs
+PLINK v2.00a2.3LM 64-bit Intel (24 Jan 2020)   www.cog-genomics.org/plink/2.0/
+(C) 2005-2020 Shaun Purcell, Christopher Chang   GNU General Public License v3
+Logging to /data/work/example/pQTL/results_control/covariates/genotype_pca.log.
+Options in effect:
+  --bad-freqs
+  --bfile /data/work/example/pQTL/results_control/preprocessing/genotypes
+  --out /data/work/example/pQTL/results_control/covariates/genotype_pca
+  --pca 5
+  --threads 4
+
+Start time: Tue Feb 10 20:12:54 2026
+385581 MiB RAM detected; reserving 192790 MiB for main workspace.
+Using up to 4 compute threads.
+49 samples (0 females, 0 males, 49 ambiguous; 49 founders) loaded from
+/data/work/example/pQTL/results_control/preprocessing/genotypes.fam.
+5761923 variants loaded from
+/data/work/example/pQTL/results_control/preprocessing/genotypes.bim.
+Note: No phenotype data present.
+Calculating allele frequencies... done.
+Excluding 116184 variants on non-autosomes from GRM construction.
+Constructing GRM: done.
+Correcting for missingness... done.
+Excluding 116184 variants on non-autosomes from PCA.
+Extracting eigenvalues and eigenvectors... done.
+--pca: Eigenvectors written to
+/data/work/example/pQTL/results_control/covariates/genotype_pca.eigenvec , and
+eigenvalues written to
+/data/work/example/pQTL/results_control/covariates/genotype_pca.eigenval .
+End time: Tue Feb 10 20:12:56 2026
+PCA Covariates saved to: /data/work/example/pQTL/results_control/covariates/genotype_pcs.txt
+(R443) stereonote@task-p24z10200n0979-ossntzu8-97f4bcb9d-sbswf:/data/work/example/pQTL$ 
+
+R443) stereonote@task-p24z10200n0979-ossntzu8-97f4bcb9d-sbswf:/data/work/example/pQTL$ # 4b: Expression PEER
+echo "  [4b] Calculating PEER Factors..."
+# Check if R peer is available, otherwise skip or handle error
+python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/expression_peer.py" \
+    --expression "$OUTPUT_DIR/preprocessing/expression.qnorm" \
+    --out-dir "$OUTPUT_DIR/covariates" \
+    --peer-n 5
+  [4b] Calculating PEER Factors...
+DEBUG: Python CWD: /data/work
+Resolved Expression File: /data/work/example/pQTL/results_control/preprocessing/expression.qnorm
+Loading R script: /data/work/example/matrix_eqtl_pipeline/r_src/peer_function.R
+Running PEER with 5 factors on /data/work/example/pQTL/results_control/preprocessing/expression.qnorm...
+DEBUG: Head of input file:
+[1] "features\tM1\tM10\tM144\tM154\tM182\tM186\tM187\tM188\tM189\tM191\tM195\tM196\tM197\tM198\tM199\tM2\tM202\tM203\tM204\tM205\tM207\tM222\tM223\tM224\tM225\tM226\tM227\tM228\tM229\tM230\tM231\tM232\tM235\tM3\tM4\tM45\tM46\tM47\tM5\tM6\tM63\tM64\tM81\tM85\tM9\tM90\tM92\tM93\tM98"   
+1] "PEER Input Dims: 7696 Genes x 49 Samples"
+        iteration 0/1000
+        iteration 1/1000
+        iteration 2/1000
+        iteration 3/1000....
+      iteration 53/1000
+        iteration 54/1000
+Converged (var(residuals)) after 54 iterations
+
+PEER Output Shape: (5, 49)
+PEER Factors saved to: /data/work/example/pQTL/results_control/covariates/peer_factors.tsv
+
+R443) stereonote@task-p24z10200n0979-ossntzu8-97f4bcb9d-sbswf:/data/work/example/pQTL$ # 4c: Combine
+echo "  [4c] Combining Covariates..."
+python3 "$CODE_DIR/src/matrix_eqtl/preprocessing/combine_covariates.py" \
+    --pca "$OUTPUT_DIR/covariates/genotype_pcs.txt" \
+    --peer "$OUTPUT_DIR/covariates/peer_factors.tsv" \
+    --known "$KNOWN_COV_FILE" \
+    --out-dir "$OUTPUT_DIR/covariates" \
+    --no-annot
+  [4c] Combining Covariates...
+Loading Genotype PCs: /data/work/example/pQTL/results_control/covariates/genotype_pcs.txt
+  Shape: (5, 49)
+Loading PEER Factors: /data/work/example/pQTL/results_control/covariates/peer_factors.tsv
+  Shape: (5, 49)
+Loading Known Covariates: /data/work/example/pQTL/input/covariates.csv
+  (Detected CSV format)
+  Detected Sample x Feature orientation. Transposing 'Known Covariates'.
+  Warning: Duplicate columns (samples) found in 'Known Covariates'. Keeping first occurrence.
+  Warning: Dropping 1 constant features (Variance=0): ['group']
+           (Constant covariates cannot be used for correlation/analysis)
+  Shape: (7, 189)
+Combined Covariates Shape: (17, 49)
+Samples: 49, Covariates: 17
+Saved combined covariates to: /data/work/example/pQTL/results_control/covariates/final_covariates.txt
+Saved correlation plot to: /data/work/example/pQTL/results_control/covariates/covariates_correlation.pdf
+(R443) stereonote@task-p24z10200n0979-ossntzu8-97f4bcb9d-sbswf:/data/work/example/pQTL$ 
+
+
+# =============================================================================
+# Step 5: Run Analysis (Two Modes)
+# =============================================================================
+
+# --- Mode A: Standard Cis + Trans Analysis (With Location Files) ---
+echo "-----------------------------------------------------------------------------"
+echo "[Step 5a] Running Standard Cis + Trans Analysis..."
+
+# NOTE: We output both Cis and Trans results here.
+# Cis distance is set by --cis-distance.
+# Trans results are enabled by setting --trans-p-value > 0.
+
+python3 "$CODE_DIR/src/matrix_eqtl/analysis/run_matrix_eqtl.py" \
+    --genotype-matrix "$OUTPUT_DIR/preprocessing/genotype.matrix" \
+    --gene-expression-matrix "$OUTPUT_DIR/preprocessing/expression.qnorm" \
+    --covariates "$OUTPUT_DIR/covariates/final_covariates.txt" \
+    --gene-positions "$OUTPUT_DIR/gene_locations.txt" \
+    --genotype-positions "$OUTPUT_DIR/preprocessing/snp_positions.txt" \
+    --output-file "$OUTPUT_DIR/cis_results.txt" \
+    --cis-distance "$CIS_DIST" \
+    --p-value "$CIS_PVAL" \
+    --trans-output-file "$OUTPUT_DIR/trans_results.txt" \
+    --trans-p-value "$TRANS_PVAL" \
+    --chunk-size 1000
+    # --no-fdr
+
+echo "  >> Cis Results:   $OUTPUT_DIR/cis_results.txt"
+echo "  >> Trans Results: $OUTPUT_DIR/trans_results.txt"
+...
+...
+...
+allback write-console: Rows read: 7696 done.
+  
+R callback write-console: Rows read: 14 done.
+  
+R callback write-console: Matching data files and location files
+  
+R callback write-console: 7547 of 7696 genes matched
+  
+R callback write-console: 5761923 of 5761923 SNPs matched
+
+  
+R callback write-console: Task finished in 5.021 seconds
+  
+R callback write-console: Reordering genes
+  
+R callback write-console: Task finished in 2.206 seconds
+  
+R callback write-console: Processing covariates
+  
+R callback write-console: Task finished in 0.002 seconds
+  
+R callback write-console: Processing gene expression data (imputation, residualization)
+  
+R callback write-console: Task finished in 0.054 seconds
+  
+R callback write-console: Creating output file(s)
+  
+R callback write-console: Task finished in 0.989 seconds
+  
+R callback write-console: Performing eQTL analysis
+  
+R callback write-console:  0.00% done, 18,562 cis-eQTLs, 1 trans-eQTLs
+  
+R callback write-console:  0.00% done, 2 trans-eQTLs
+  
+R callback write-console:  0.00% done, 5 trans-eQTLs
+  
+
+
+
+
+
+
+
+
+########## 不区分cis trans
+R443) stereonote@task-p24z10200n0979-ossntzu8-97f4bcb9d-sbswf:/data/work/example/pQTL$ 
+# --- Configuration (Edit these paths) ---
+export PROJ_DIR='/data/work/example/pQTL'
+export CODE_DIR="/data/work/example/matrix_eqtl_pipeline/"  # Path to the source code (src/)
+export OUTPUT_DIR="$PROJ_DIR/results_control"
+
+# Input Data
+VCF_FILE="/data/work/example/pQTL/input/genotypes.vcf.gz"
+EXPRESSION_FILE="/data/work/example/pQTL/input/expression.tsv"
+# GTF_FILE="/data/work/Ref/gencode.v46.annotation.gtf" # Optional if using fetch-pos
+KNOWN_COV_FILE="/data/work/example/pQTL/input/covariates.csv"
+
+
+# Parameters
+PLINK_BIN="plink2"   # Or "plink" for v1.9
+PLINK_VERSION=2      # 1 or 2
+THREADS=25
+CIS_DIST=1000000     # 1MB
+CIS_PVAL=1
+TRANS_PVAL=1e-5      # Set >0 to output trans results. If 0, no trans output.
+ALL_PAIRS_PVAL=1e-5 # For location-free mode (usually stricter)
+
+echo ">>> Project Dir: $PROJ_DIR"
+echo ">>> Output Dir:  $OUTPUT_DIR"
+mkdir -p "$OUTPUT_DIR"
+>>> Project Dir: /data/work/example/pQTL
+>>> Output Dir:  /data/work/example/pQTL/results_control
+(R443) stereonote@task-p24z10200n0979-ossntzu8-97f4bcb9d-sbswf:/data/work/example/pQTL$ echo "-----------------------------------------------------------------------------"
+echo "[Step 5b] Running All-Pairs Analysis (Location-Free)..."
+
+python3 "$CODE_DIR/src/matrix_eqtl/analysis/run_matrix_eqtl.py" \
+    --genotype-matrix "$OUTPUT_DIR/preprocessing/genotype.matrix" \
+    --gene-expression-matrix "$OUTPUT_DIR/preprocessing/expression.qnorm" \
+    --covariates "$OUTPUT_DIR/covariates/final_covariates.txt" \
+    --output-file "$OUTPUT_DIR/all_pairs_results.txt" \
+    --p-value "$ALL_PAIRS_PVAL" \
+    --no-fdr
+
+echo "  >> All-Pairs Results: $OUTPUT_DIR/all_pairs_results.txt"
+-----------------------------------------------------------------------------
+[Step 5b] Running All-Pairs Analysis (Location-Free)...
+>>> Checking Sample Alignment...
+  ✅ All files are already aligned.
+>>> Full Analysis Start.
+    Results will be saved to: /data/work/example/pQTL/results_control/all_pairs_results.txt
+    QQ Plot will be saved to: /data/work/example/pQTL/results_control/qq_plot.pdf
+>>> Running Location-Free Mode (Classic All-vs-All)...
+    Note: Cis-distance ignored. Treating all pairs as Trans.
+R callback write-console: Rows read: 2,000
+  
+R callback write-console: Rows read: 4,000
+  
+R callback write-console: Rows read: 6,000
+  
+R callback write-console: Rows read: 8,000
+
+
+

@@ -37,7 +37,7 @@ def run_pca(genotype_prefix, output_dir, pca_n=3, threads=1, plink_bin="plink2",
     if plink_version == 2:
         # PLINK 2 optimization: approx defaults to fast
         # Ensure it works same as v1.9 basic PCA
-        pass
+        cmd.append("--bad-freqs") # Allow small sample sizes (<50) without error
     else:
         # PLINK 1.9
         pass
